@@ -10,7 +10,14 @@ import json
 import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council import (
+    run_full_council,
+    generate_conversation_title,
+    stage1_collect_responses,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+    calculate_aggregate_rankings,
+)
 
 app = FastAPI(title="LLM Council API")
 
@@ -22,11 +29,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-class CreateConversationRequest(BaseModel):
-    """Request to create a new conversation."""
-    pass
 
 
 class SendMessageRequest(BaseModel):
@@ -63,7 +65,7 @@ async def list_conversations():
 
 
 @app.post("/api/conversations", response_model=Conversation)
-async def create_conversation(request: CreateConversationRequest):
+async def create_conversation():
     """Create a new conversation."""
     conversation_id = str(uuid.uuid4())
     conversation = storage.create_conversation(conversation_id)

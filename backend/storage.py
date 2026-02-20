@@ -1,21 +1,17 @@
 """JSON-based storage for conversations."""
 
 import json
-import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from .config import DATA_DIR
 
-
-def ensure_data_dir():
-    """Ensure the data directory exists."""
-    Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+_CONVERSATIONS_DIR = Path(DATA_DIR)
+_CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_conversation_path(conversation_id: str) -> str:
-    """Get the file path for a conversation."""
-    return os.path.join(DATA_DIR, f"{conversation_id}.json")
+def _conversation_path(conversation_id: str) -> Path:
+    return _CONVERSATIONS_DIR / f"{conversation_id}.json"
 
 
 def create_conversation(conversation_id: str) -> Dict[str, Any]:
@@ -28,8 +24,6 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
     Returns:
         New conversation dict
     """
-    ensure_data_dir()
-
     conversation = {
         "id": conversation_id,
         "created_at": datetime.utcnow().isoformat(),
@@ -37,9 +31,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
         "messages": []
     }
 
-    # Save to file
-    path = get_conversation_path(conversation_id)
-    with open(path, 'w') as f:
+    with open(_conversation_path(conversation_id), 'w') as f:
         json.dump(conversation, f, indent=2)
 
     return conversation
@@ -55,12 +47,12 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Conversation dict or None if not found
     """
-    path = get_conversation_path(conversation_id)
+    path = _conversation_path(conversation_id)
 
-    if not os.path.exists(path):
+    if not path.exists():
         return None
 
-    with open(path, 'r') as f:
+    with open(path) as f:
         return json.load(f)
 
 
@@ -71,10 +63,7 @@ def save_conversation(conversation: Dict[str, Any]):
     Args:
         conversation: Conversation dict to save
     """
-    ensure_data_dir()
-
-    path = get_conversation_path(conversation['id'])
-    with open(path, 'w') as f:
+    with open(_conversation_path(conversation['id']), 'w') as f:
         json.dump(conversation, f, indent=2)
 
 
@@ -85,25 +74,18 @@ def list_conversations() -> List[Dict[str, Any]]:
     Returns:
         List of conversation metadata dicts
     """
-    ensure_data_dir()
-
     conversations = []
-    for filename in os.listdir(DATA_DIR):
-        if filename.endswith('.json'):
-            path = os.path.join(DATA_DIR, filename)
-            with open(path, 'r') as f:
-                data = json.load(f)
-                # Return metadata only
-                conversations.append({
-                    "id": data["id"],
-                    "created_at": data["created_at"],
-                    "title": data.get("title", "New Conversation"),
-                    "message_count": len(data["messages"])
-                })
+    for path in _CONVERSATIONS_DIR.glob('*.json'):
+        with open(path) as f:
+            data = json.load(f)
+            conversations.append({
+                "id": data["id"],
+                "created_at": data["created_at"],
+                "title": data.get("title", "New Conversation"),
+                "message_count": len(data["messages"])
+            })
 
-    # Sort by creation time, newest first
     conversations.sort(key=lambda x: x["created_at"], reverse=True)
-
     return conversations
 
 
@@ -119,11 +101,7 @@ def add_user_message(conversation_id: str, content: str):
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({
-        "role": "user",
-        "content": content
-    })
-
+    conversation["messages"].append({"role": "user", "content": content})
     save_conversation(conversation)
 
 
@@ -152,7 +130,6 @@ def add_assistant_message(
         "stage2": stage2,
         "stage3": stage3
     })
-
     save_conversation(conversation)
 
 

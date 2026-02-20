@@ -7,6 +7,12 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --color-primary: #4a90e2;
+  --color-primary-dark: #357abd;
+  --color-primary-light: #f0f7ff;
+  --color-primary-border: #d0e7ff;
+  --color-primary-glow: rgba(74, 144, 226, 0.1);
 }
 
 * {
@@ -26,6 +32,46 @@ body {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+}
+
+/* Shared tab component styles */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 8px 16px;
+  background: #ffffff;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px 6px 0 0;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  background: #f0f0f0;
+  color: #333;
+  border-color: var(--color-primary);
+}
+
+.tab.active {
+  background: #ffffff;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  border-bottom-color: #ffffff;
+  font-weight: 600;
+}
+
+.tab-content {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
 }
 
 /* Global markdown styling */

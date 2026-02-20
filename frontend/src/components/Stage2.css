@@ -21,16 +21,16 @@
 }
 
 .aggregate-rankings {
-  background: #f0f7ff;
+  background: var(--color-primary-light);
   padding: 16px;
   border-radius: 8px;
   margin-bottom: 20px;
-  border: 2px solid #d0e7ff;
+  border: 2px solid var(--color-primary-border);
 }
 
 .aggregate-rankings h4 {
   margin: 0 0 12px 0;
-  color: #2a7ae2;
+  color: var(--color-primary);
   font-size: 15px;
 }
 
@@ -47,11 +47,11 @@
   padding: 10px;
   background: #ffffff;
   border-radius: 6px;
-  border: 1px solid #d0e7ff;
+  border: 1px solid var(--color-primary-border);
 }
 
 .rank-position {
-  color: #2a7ae2;
+  color: var(--color-primary);
   font-weight: 700;
   font-size: 16px;
   min-width: 35px;
@@ -71,43 +71,8 @@
   font-family: monospace;
 }
 
-.stage2 .tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.stage2 .tab {
-  padding: 8px 16px;
-  background: #ffffff;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px 6px 0 0;
-  color: #666;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.stage2 .tab:hover {
-  background: #f0f0f0;
-  color: #333;
-  border-color: #4a90e2;
-}
-
-.stage2 .tab.active {
-  background: #ffffff;
-  color: #4a90e2;
-  border-color: #4a90e2;
-  border-bottom-color: #ffffff;
-  font-weight: 600;
-}
-
+/* Extra spacing after tab content in stage 2 */
 .stage2 .tab-content {
-  background: #ffffff;
-  padding: 16px;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
   margin-bottom: 20px;
 }
 
@@ -131,7 +96,7 @@
 }
 
 .parsed-ranking strong {
-  color: #2a7ae2;
+  color: var(--color-primary);
   font-size: 13px;
 }
 

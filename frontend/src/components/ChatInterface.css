@@ -52,10 +52,10 @@
 }
 
 .user-message .message-content {
-  background: #f0f7ff;
+  background: var(--color-primary-light);
   padding: 16px;
   border-radius: 8px;
-  border: 1px solid #d0e7ff;
+  border: 1px solid var(--color-primary-border);
   color: #333;
   line-height: 1.6;
   max-width: 80%;
@@ -89,7 +89,7 @@
   width: 20px;
   height: 20px;
   border: 2px solid #e0e0e0;
-  border-top-color: #4a90e2;
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -126,8 +126,8 @@
 }
 
 .message-input:focus {
-  border-color: #4a90e2;
-  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
 .message-input:disabled {
@@ -138,8 +138,8 @@
 
 .send-button {
   padding: 14px 28px;
-  background: #4a90e2;
-  border: 1px solid #4a90e2;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 8px;
   color: #fff;
   font-size: 15px;
@@ -151,8 +151,8 @@
 }
 
 .send-button:hover:not(:disabled) {
-  background: #357abd;
-  border-color: #357abd;
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
 }
 
 .send-button:disabled {
