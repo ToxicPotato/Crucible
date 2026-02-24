@@ -13,6 +13,7 @@ from . import storage
 from .council import (
     run_full_council,
     generate_conversation_title,
+    phase0_scrub_prompt,
     stage1_collect_responses,
     stage2_collect_rankings,
     stage3_synthesize_final,
@@ -31,9 +32,15 @@ app.add_middleware(
 )
 
 
+class ScrubRequest(BaseModel):
+    """Request to run Phase 0 prompt sanitization."""
+    content: str
+
+
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
+    scrubbed_content: str | None = None
 
 
 class ConversationMetadata(BaseModel):
@@ -79,6 +86,19 @@ async def get_conversation(conversation_id: str):
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+@app.post("/api/conversations/{conversation_id}/phase0")
+async def scrub_prompt(conversation_id: str, request: ScrubRequest):
+    """
+    Phase 0: Sanitize the user's prompt before sending to the council.
+    Returns original, scrubbed, and reasoning — does not write to storage.
+    """
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return await phase0_scrub_prompt(request.content)
 
 
 @app.post("/api/conversations/{conversation_id}/message")
@@ -139,9 +159,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
+    # Use the scrubbed prompt if the frontend accepted Phase 0, otherwise fall back
+    query = request.scrubbed_content if request.scrubbed_content else request.content
+
     async def event_generator():
         try:
-            # Add user message
+            # Add user message (always store the original, human-readable content)
             storage.add_user_message(conversation_id, request.content)
 
             # Start title generation in parallel (don't await yet)
@@ -151,18 +174,18 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
+            stage1_results = await stage1_collect_responses(query)
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+            stage2_results, label_to_model = await stage2_collect_rankings(query, stage1_results)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(query, stage1_results, stage2_results)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started

@@ -1,14 +1,48 @@
 import { useState, useEffect, useRef } from 'react';
+
+function ScrubIndicator({ original, reasoning }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="scrub-indicator">
+      <button
+        className={`scrub-badge${open ? ' scrub-badge--open' : ''}`}
+        onClick={() => setOpen((o) => !o)}
+        title="This prompt was scrubbed — click to see original"
+      >
+        ✦ scrubbed
+      </button>
+      {open && (
+        <div className="scrub-detail">
+          <div className="scrub-detail-row">
+            <span className="scrub-detail-label">Original</span>
+            <span className="scrub-detail-text">{original}</span>
+          </div>
+          {reasoning && (
+            <div className="scrub-detail-row">
+              <span className="scrub-detail-label">Reasoning</span>
+              <span className="scrub-detail-text">{reasoning}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import Phase0Review from './Phase0Review';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   onSendMessage,
   isLoading,
+  phase0State,
+  onPhase0UseOriginal,
+  onPhase0UseScrubbed,
+  onPhase0Decline,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -19,7 +53,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     scrollToBottom();
-  }, [conversation]);
+  }, [conversation, phase0State]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -64,9 +98,14 @@ export default function ChatInterface({
                   <div className="message-label">You</div>
                   <div className="message-content">
                     <div className="markdown-content">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown>
+                        {msg.usedScrubbed ? msg.scrubbedContent : msg.content}
+                      </ReactMarkdown>
                     </div>
                   </div>
+                  {msg.usedScrubbed && (
+                    <ScrubIndicator original={msg.content} reasoning={msg.reasoning} />
+                  )}
                 </div>
               ) : (
                 <div className="assistant-message">
@@ -110,7 +149,16 @@ export default function ChatInterface({
           ))
         )}
 
-        {isLoading && (
+        {phase0State && (phase0State.status === 'scrubbing' || phase0State.status === 'pending') && (
+          <Phase0Review
+            phase0State={phase0State}
+            onUseOriginal={onPhase0UseOriginal}
+            onUseScrubbed={onPhase0UseScrubbed}
+            onDecline={onPhase0Decline}
+          />
+        )}
+
+        {isLoading && phase0State?.status === 'idle' && (
           <div className="loading-indicator">
             <div className="spinner"></div>
             <span>Consulting the council...</span>

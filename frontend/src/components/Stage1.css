@@ -24,3 +24,117 @@
   color: #333;
   line-height: 1.6;
 }
+
+/* ── Metadata section ─────────────────────────────── */
+
+.meta-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e8e8e8;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.meta-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #999;
+  white-space: nowrap;
+  padding-top: 3px;
+  min-width: 84px;
+}
+
+/* Confidence badge */
+
+.confidence-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.confidence-green {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.confidence-amber {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.confidence-red {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Source pill — sits inline next to the confidence badge */
+
+.confidence-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.source-pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: lowercase;
+}
+
+.source-recalled {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+.source-reasoned {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.source-speculative {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+/* Assumption / unknown chips */
+
+.meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  line-height: 1.4;
+}
+
+.chip-assumption {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.chip-unknown {
+  background: #f5f3ff;
+  color: #5b21b6;
+  border: 1px solid #ddd6fe;
+}

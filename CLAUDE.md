@@ -1,166 +1,111 @@
-# CLAUDE.md - Technical Notes for LLM Council
+# CLAUDE.md
 
-This file contains technical details, architectural decisions, and important implementation notes for future development sessions.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
+LLM Council is a deliberation system where multiple LLMs collaboratively answer user questions through a 3-stage pipeline: independent answers → anonymized peer ranking → chairman synthesis. A Phase 0 scrubber neutralizes framing bias before any model sees the question.
+
+## Running the Project
+
+**Primary (Docker):**
+```bash
+docker compose up --build   # rebuild and start everything
+docker compose up           # start without rebuilding
+```
+Frontend → `http://localhost:3000`, Backend → `http://localhost:8001`
+
+**Local development:**
+```bash
+# Backend (from project root)
+python -m backend.main
+
+# Frontend
+cd frontend && npm run dev   # http://localhost:5173
+cd frontend && npm run lint
+```
+
+**Tests:**
+```bash
+pip install httpx
+python test_phase0.py        # runs 10 adversarial scrubber test cases against live API
+```
+
+**Dependencies:** `OPENROUTER_API_KEY` must be set in `.env` at project root (read by docker-compose and python-dotenv).
 
 ## Architecture
 
-### Backend Structure (`backend/`)
+### Docker networking
+`VITE_API_BASE` is intentionally empty in `docker-compose.yml`. The Nginx container proxies `/api/` to the backend container — never set it to `http://localhost:8001` inside Docker.
 
-**`config.py`**
-- Contains `COUNCIL_MODELS` (list of OpenRouter model identifiers)
-- Contains `CHAIRMAN_MODEL` (model that synthesizes final answer)
-- Uses environment variable `OPENROUTER_API_KEY` from `.env`
-- Backend runs on **port 8001** (NOT 8000 - user had another app on 8000)
-
-**`openrouter.py`**
-- `query_model()`: Single async model query
-- `query_models_parallel()`: Parallel queries using `asyncio.gather()`
-- Returns dict with 'content' and optional 'reasoning_details'
-- Graceful degradation: returns None on failure, continues with successful responses
-
-**`council.py`** - The Core Logic
-- `stage1_collect_responses()`: Parallel queries to all council models
-- `stage2_collect_rankings()`:
-  - Anonymizes responses as "Response A, B, C, etc."
-  - Creates `label_to_model` mapping for de-anonymization
-  - Prompts models to evaluate and rank (with strict format requirements)
-  - Returns tuple: (rankings_list, label_to_model_dict)
-  - Each ranking includes both raw text and `parsed_ranking` list
-- `stage3_synthesize_final()`: Chairman synthesizes from all responses + rankings
-- `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
-- `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
-
-**`storage.py`**
-- JSON-based conversation storage in `data/conversations/`
-- Each conversation: `{id, created_at, messages[]}`
-- Assistant messages contain: `{role, stage1, stage2, stage3}`
-- Note: metadata (label_to_model, aggregate_rankings) is NOT persisted to storage, only returned via API
-
-**`main.py`**
-- FastAPI app with CORS enabled for localhost:5173 and localhost:3000
-- POST `/api/conversations/{id}/message` returns metadata in addition to stages
-- Metadata includes: label_to_model mapping and aggregate_rankings
-
-### Frontend Structure (`frontend/src/`)
-
-**`App.jsx`**
-- Main orchestration: manages conversations list and current conversation
-- Handles message sending and metadata storage
-- Important: metadata is stored in the UI state for display but not persisted to backend JSON
-
-**`components/ChatInterface.jsx`**
-- Multiline textarea (3 rows, resizable)
-- Enter to send, Shift+Enter for new line
-- User messages wrapped in markdown-content class for padding
-
-**`components/Stage1.jsx`**
-- Tab view of individual model responses
-- ReactMarkdown rendering with markdown-content wrapper
-
-**`components/Stage2.jsx`**
-- **Critical Feature**: Tab view showing RAW evaluation text from each model
-- De-anonymization happens CLIENT-SIDE for display (models receive anonymous labels)
-- Shows "Extracted Ranking" below each evaluation so users can validate parsing
-- Aggregate rankings shown with average position and vote count
-- Explanatory text clarifies that boldface model names are for readability only
-
-**`components/Stage3.jsx`**
-- Final synthesized answer from chairman
-- Green-tinted background (#f0fff0) to highlight conclusion
-
-**Styling (`*.css`)**
-- Light mode theme (not dark mode)
-- Primary color: #4a90e2 (blue)
-- Global markdown styling in `index.css` with `.markdown-content` class
-- 12px padding on all markdown content to prevent cluttered appearance
-
-## Key Design Decisions
-
-### Stage 2 Prompt Format
-The Stage 2 prompt is very specific to ensure parseable output:
-```
-1. Evaluate each response individually first
-2. Provide "FINAL RANKING:" header
-3. Numbered list format: "1. Response C", "2. Response A", etc.
-4. No additional text after ranking section
-```
-
-This strict format allows reliable parsing while still getting thoughtful evaluations.
-
-### De-anonymization Strategy
-- Models receive: "Response A", "Response B", etc.
-- Backend creates mapping: `{"Response A": "openai/gpt-5.1", ...}`
-- Frontend displays model names in **bold** for readability
-- Users see explanation that original evaluation used anonymous labels
-- This prevents bias while maintaining transparency
-
-### Error Handling Philosophy
-- Continue with successful responses if some models fail (graceful degradation)
-- Never fail the entire request due to single model failure
-- Log errors but don't expose to user unless all models fail
-
-### UI/UX Transparency
-- All raw outputs are inspectable via tabs
-- Parsed rankings shown below raw text for validation
-- Users can verify system's interpretation of model outputs
-- This builds trust and allows debugging of edge cases
-
-## Important Implementation Details
-
-### Relative Imports
-All backend modules use relative imports (e.g., `from .config import ...`) not absolute imports. This is critical for Python's module system to work correctly when running as `python -m backend.main`.
-
-### Port Configuration
-- Backend: 8001 (changed from 8000 to avoid conflict)
-- Frontend: 5173 (Vite default)
-- Update both `backend/main.py` and `frontend/src/api.js` if changing
-
-### Markdown Rendering
-All ReactMarkdown components must be wrapped in `<div className="markdown-content">` for proper spacing. This class is defined globally in `index.css`.
-
-### Model Configuration
-Models are hardcoded in `backend/config.py`. Chairman can be same or different from council members. The current default is Gemini as chairman per user preference.
-
-## Common Gotchas
-
-1. **Module Import Errors**: Always run backend as `python -m backend.main` from project root, not from backend directory
-2. **CORS Issues**: Frontend must match allowed origins in `main.py` CORS middleware
-3. **Ranking Parse Failures**: If models don't follow format, fallback regex extracts any "Response X" patterns in order
-4. **Missing Metadata**: Metadata is ephemeral (not persisted), only available in API responses
-
-## Future Enhancement Ideas
-
-- Configurable council/chairman via UI instead of config file
-- Streaming responses instead of batch loading
-- Export conversations to markdown/PDF
-- Model performance analytics over time
-- Custom ranking criteria (not just accuracy/insight)
-- Support for reasoning models (o1, etc.) with special handling
-
-## Testing Notes
-
-Use `test_openrouter.py` to verify API connectivity and test different model identifiers before adding to council. The script tests both streaming and non-streaming modes.
-
-## Data Flow Summary
-
+### Data flow
 ```
 User Query
     ↓
-Stage 1: Parallel queries → [individual responses]
+Phase 0 (optional): Scrubber → user reviews diff → accept/decline
     ↓
-Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings]
+Stage 1: Parallel queries to all council models
+         Each response parsed into prose + JSON metadata block
     ↓
-Aggregate Rankings Calculation → [sorted by avg position]
+Stage 2: Anonymize as "Response A/B/C..." → parallel peer rankings
+         Rankers see confidence scores but only COUNTS of assumptions (not text)
     ↓
-Stage 3: Chairman synthesis with full context
+Aggregate Rankings: avg position per model across all rankings
     ↓
-Return: {stage1, stage2, stage3, metadata}
+Stage 3: Chairman synthesizes final answer (sees full metadata)
     ↓
-Frontend: Display with tabs + validation UI
+SSE stream: {stage1_complete, stage2_complete, stage3_complete, title_complete}
 ```
 
-The entire flow is async/parallel where possible to minimize latency.
+### Backend (`backend/`)
+
+**`config.py`** — all model identifiers and feature flags.
+- `COUNCIL_MODELS`: list of 4 OpenRouter model IDs
+- `CHAIRMAN_MODEL`: synthesis model (currently Gemini 3 Pro)
+- `SCRUBBER_MODEL`: Phase 0 model (Gemini 2.5 Flash — fast/cheap)
+- `PHASE0_ENABLED`: **currently `False`** — set to `True` once scrubber prompt is tuned
+
+**`council.py`** — core logic, most frequently modified file.
+- `SCRUBBER_SYSTEM_PROMPT`: Phase 0 scrubber instructions (fully iterated)
+- `STAGE1_SYSTEM_PROMPT`: instructions given to every council model before their answer. Defines confidence calibration rules (hard ceilings: recalled ≤90, reasoned ≤75, speculative ≤60), the "recalled a debate" rule, and anonymity notice.
+- `phase0_scrub_prompt()`: calls scrubber, extracts JSON with `find/rfind`, graceful fallback
+- `parse_stage1_metadata()`: splits model response into prose + metadata dict. Uses `rfind` (not `find`) because prose may contain JSON-like text — the metadata block is always last.
+- `stage1_collect_responses()`: sends `[system: STAGE1_SYSTEM_PROMPT, user: query]` to all models in parallel; calls `parse_stage1_metadata()` on each
+- `stage2_collect_rankings()`: anonymizes responses; shows confidence + source + **counts only** for assumptions/unknowns (not text, to prevent de-anonymization by phrasing style)
+- `stage3_synthesize_final()`: chairman sees full metadata including assumption text
+- `calculate_aggregate_rankings()`: avg rank position across all peer evaluations
+
+**`main.py`** — FastAPI app, ports 8001.
+- Primary path: `POST /api/conversations/{id}/message/stream` — SSE streaming, yields `stage1_complete`, `stage2_complete`, `stage3_complete`, `title_complete`, `complete`
+- Phase 0 path: `POST /api/conversations/{id}/phase0` — returns `{original, scrubbed, reasoning}`, does NOT write to storage
+- `SendMessageRequest.scrubbed_content`: optional; if provided, council uses it instead of `content`; storage always saves original `content`
+
+**`storage.py`** — JSON files in `data/conversations/`. Metadata (`label_to_model`, `aggregate_rankings`) is **not persisted** — only returned via API response and held in frontend state.
+
+### Frontend (`frontend/src/`)
+
+**`App.jsx`** — Phase 0 state machine: `PHASE0_IDLE → scrubbing → pending → idle`. `handleSendMessage` triggers scrub; `handlePhase0Accept(scrubbedContent)` calls `runCouncilStream`; `handlePhase0Decline` resets to idle.
+
+**`components/Phase0Review.jsx`** — shows spinner during scrub, two-column original/scrubbed diff when pending, "no changes" tag when identical.
+
+**`components/Stage1.jsx`** — tab view per model. Below each prose response shows: confidence badge (green ≥70 / amber 50–69 / red <50) + source pill (recalled/reasoned/speculative) + assumption chips (blue) + unknown chips (purple). All hidden if metadata is null (backward compatible with old conversations).
+
+**`components/Stage2.jsx`** — tab view of raw ranking text per model; de-anonymization client-side; shows extracted ranking for user validation.
+
+## Key Invariants
+
+- **Relative imports**: all `backend/` modules use `from .config import ...`. Run as `python -m backend.main` from project root.
+- **All ReactMarkdown** must be wrapped in `<div className="markdown-content">` — class defined in `index.css`.
+- **Confidence ceilings** are enforced by prompt instruction, not code. The system trusts model compliance; `parse_stage1_metadata()` normalises `confidence_source` to `{"recalled","reasoned","speculative"}` or `None`.
+- **Anonymity rule**: Stage 2 must never show assumption/unknown text — only counts. Breaking this lets rankers identify models by phrasing style.
+- **Phase 0 storage rule**: scrubbed prompt goes to council; original prompt goes to `storage`. Users always see what they typed.
+
+## System Prompt Locations
+
+Both system prompts live as module-level constants in `council.py` and were designed iteratively by the council itself:
+- `SCRUBBER_SYSTEM_PROMPT` (~60 lines): full ruleset including EXCEPTIONS & OVERRIDES section
+- `STAGE1_SYSTEM_PROMPT` (~30 lines): transparency framing + calibration rules + JSON schema
+
+## Testing Scrubber Behavior
+
+`test_phase0.py` at project root runs 10 adversarial cases (lived experience, code refactoring, crisis language, contradictions, etc.) against the live API. Requires the server running and `OPENROUTER_API_KEY` set. Output is raw — no pass/fail verdicts, intended for human review and council discussion.

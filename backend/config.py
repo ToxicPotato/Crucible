@@ -19,6 +19,12 @@ COUNCIL_MODELS = [
 # Chairman model - synthesizes final response
 CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 
+# Scrubber model - Phase 0 prompt neutralization (fast + cheap)
+SCRUBBER_MODEL = "google/gemini-2.5-flash"
+
+# Set to True once SCRUBBER_SYSTEM_PROMPT is written in council.py
+PHASE0_ENABLED = True
+
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 

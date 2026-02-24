@@ -59,13 +59,6 @@ CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 
 ## Running the Application
 
-**Option 1: Use the start script**
-```bash
-./start.sh
-```
-
-**Option 2: Run manually**
-
 Terminal 1 (Backend):
 ```bash
 uv run python -m backend.main

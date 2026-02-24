@@ -67,13 +67,39 @@ export const api = {
   },
 
   /**
+   * Phase 0: Sanitize a prompt before sending to the council.
+   * @param {string} conversationId - The conversation ID
+   * @param {string} content - The raw user message
+   * @returns {Promise<{original: string, scrubbed: string, reasoning: string}>}
+   */
+  async scrubPhase0(conversationId, content) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/phase0`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Phase 0 scrub failed');
+    }
+    return response.json();
+  },
+
+  /**
    * Send a message and receive streaming updates.
    * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
+   * @param {string} content - The original message content
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
+   * @param {string|null} scrubbedContent - Phase 0 scrubbed prompt (if accepted)
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, onEvent, scrubbedContent = null) {
+    const body = scrubbedContent
+      ? { content, scrubbed_content: scrubbedContent }
+      : { content };
+
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
@@ -81,7 +107,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       }
     );
 
