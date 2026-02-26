@@ -19,3 +19,8 @@ data/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/nul
+
+# Local dev config
+.claude/
+.vite/

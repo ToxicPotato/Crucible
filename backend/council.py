@@ -1,36 +1,15 @@
 """3-stage LLM Council orchestration."""
 
 import re
+import asyncio
+import json as _json
 from collections import defaultdict
 from typing import List, Dict, Any, Tuple
 from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, SCRUBBER_MODEL, PHASE0_ENABLED
+from .verifier import stage25_verify_claims, format_verification_context
 
 
-# ---------------------------------------------------------------------------
-# TODO: Write the scrubber system prompt below.
-#
-# This is Phase 0's core logic — the instructions that define what the scrubber
-# agent actually does. Consider these trade-offs:
-#
-#   - AGGRESSIVE: Rewrites everything into neutral academic language.
-#     Pro: maximum bias removal. Con: may lose the user's actual intent.
-#
-#   - CONSERVATIVE: Only removes leading adjectives and loaded framing,
-#     preserves domain, specificity, and structure.
-#     Pro: stays faithful to what the user wanted to ask.
-#     Con: subtle framing bias may survive.
-#
-#   - TRANSPARENCY: The prompt should instruct the model to return a JSON
-#     object with "scrubbed" (the new question) and "reasoning" (what changed
-#     and why). This is used in the frontend review card.
-#
-# Suggested structure to fill in (~8 lines):
-#   "You are a prompt sanitization agent for an AI council deliberation system.
-#    Your job is to rewrite the user's question so that it is [YOUR RULE HERE].
-#    [WHAT TO PRESERVE], [WHAT TO REMOVE], [WHAT FORMAT TO USE].
-#    Always return a JSON object: { \"scrubbed\": \"...\", \"reasoning\": \"...\" }"
-# ---------------------------------------------------------------------------
 SCRUBBER_SYSTEM_PROMPT = """You are the Phase 0 Scrubber Agent. Your job is to neutralize framing bias in user questions without altering the user's core intent, goal, or constraints.
 
 1. ANALYZE: Identify leading language, loaded terms, binary framing, and hidden assumptions. Distinction: Scrutinize the *framing* (how it is asked), but accept the *operative context* (topic, specific actors, user identity, and simulation parameters) as inviolable data.
@@ -71,8 +50,6 @@ async def phase0_scrub_prompt(user_query: str) -> Dict[str, str]:
             "scrubbed": user_query,
             "reasoning": "Phase 0 is disabled — scrubber prompt not yet configured.",
         }
-
-    import json as _json
 
     scrub_prompt = f"""User question to sanitize:
 
@@ -120,22 +97,6 @@ async def phase0_scrub_prompt(user_query: str) -> Dict[str, str]:
         }
 
 
-# ---------------------------------------------------------------------------
-# Stage 1 system prompt — designed and refined by the LLM Council itself.
-#
-# Design decisions (council consensus, v2):
-#   1. TRANSPARENCY: models are told their answer will be peer-reviewed.
-#      Framed as "verification" to prime for defensibility over rhetoric.
-#   2. CONFIDENCE: hard source-based ceilings replace the old "90+ subtract"
-#      rule, which models bypassed by anchoring below the trigger threshold.
-#      Ceilings: recalled ≤90, reasoned ≤75, speculative ≤60.
-#      50 is anchored as the "unsure but leaning" baseline so 75 reads as
-#      a high score rather than a penalty.
-#   3. "RECALLED A DEBATE" RULE: if the answer is contested/unresolved,
-#      the source must be "reasoned" regardless of what the model remembers.
-#   4. ANONYMITY: only counts (not text) of assumptions/unknowns are shown
-#      in Stage 2 to prevent de-anonymization via phrasing style.
-# ---------------------------------------------------------------------------
 STAGE1_SYSTEM_PROMPT = """You are a Stage 1 model in a deliberation council. Your answer will be rigorously peer-reviewed and verified by other models. Favor precision and stated uncertainty over authoritative tone.
 
 1. First, answer the user's question clearly and concisely in natural prose.
@@ -145,24 +106,26 @@ Use this JSON schema:
 {
   "confidence": <integer 0-100>,
   "confidence_source": "recalled" | "reasoned" | "speculative",
-  "key_assumptions": ["<str>", "<str>", "<str>"],
-  "known_unknowns": ["<str>", "<str>", "<str>"]
+  "key_assumptions": ["<str>", "<str>"],
+  "factual_claims": ["<str>", "<str>"],
+  "known_unknowns": ["<str>", "<str>"]
 }
 
 METADATA DEFINITIONS:
 - "confidence": Your subjective probability that your factual claims are correct.
   * Hard ceilings: "recalled" max 90, "reasoned" max 75, "speculative" max 60.
   * Treat 50 as the default "unsure but leaning" baseline; 75 signals a strong reasoned position.
-  * Any score above 70 requires your key_assumptions to be written for a skeptical expert — no inline citations.
+  * Any score above 70 requires your factual_claims to be written for a skeptical expert — no inline citations.
   * Scale: 50=unsure but leaning; 75=solid reasoned position; 90=stable recalled fact; 99=axiomatic truth.
 - "confidence_source":
   * "recalled"    = stable, uncontested fact (APIs, historical dates, physical constants). If the topic is actively debated or unresolved, use "reasoned" instead — even if you remember reading about it.
   * "reasoned"    = derived via logic/inference, OR the correct answer is contested in the field.
   * "speculative" = best guess based on limited information.
-- "key_assumptions": List 1-3 load-bearing premises. Include framing choices and falsifiable facts the answer depends on. If these are wrong, your answer collapses.
+- "key_assumptions": List 1-3 load-bearing FRAMING premises — how you're interpreting the question, what scope or context you're assuming, what the user probably means. These are interpretive choices, not verifiable facts.
+- "factual_claims": List 0-3 specific, concrete, independently verifiable facts your answer asserts. Each must be falsifiable by web search. CORRECT: "Bell's patent 174465 was granted March 7, 1876". WRONG: "I interpret the question as asking about X". Leave empty [] if no specific facts are asserted.
 - "known_unknowns": List 1-3 specific missing pieces of information that, if known, would meaningfully improve your answer.
 
-NOTE: To preserve anonymity in peer review, only the numeric counts of your assumptions and unknowns will be shown to other models — not their text. Your confidence score alone must reflect the full strength of your position."""
+NOTE: In peer review, your factual claims and framing assumptions will be shown to other models in style-neutralized form. Rankers will evaluate both your confidence score and whether your specific claims are proportionate to that confidence. Write factual_claims that are precise and falsifiable."""
 
 
 def parse_stage1_metadata(raw: str) -> tuple:
@@ -179,12 +142,11 @@ def parse_stage1_metadata(raw: str) -> tuple:
         (prose: str, metadata: dict) — prose is text before the JSON block.
         On parse failure, returns (raw, empty metadata dict).
     """
-    import json as _json
-
     empty_meta = {
         "confidence": None,
         "confidence_source": None,
         "key_assumptions": [],
+        "factual_claims": [],
         "known_unknowns": [],
     }
 
@@ -209,11 +171,62 @@ def parse_stage1_metadata(raw: str) -> tuple:
             "confidence": parsed.get("confidence"),
             "confidence_source": raw_source if raw_source in _valid_sources else None,
             "key_assumptions": parsed.get("key_assumptions", []),
+            "factual_claims": parsed.get("factual_claims", []),
             "known_unknowns": parsed.get("known_unknowns", []),
         }
         return prose, meta
     except (_json.JSONDecodeError, ValueError):
         return raw, empty_meta
+
+
+async def _scrub_metadata_texts(texts: List[str]) -> List[str]:
+    """
+    Batch-rewrite factual claims and assumptions in neutral, third-person, technical prose.
+
+    Removes stylistic fingerprints (first-person phrasing, idiomatic expressions,
+    hedging patterns) that high-capability rankers could use to de-anonymize peers.
+    All texts are sent in a single LLM call to minimize latency.
+
+    Falls back to the original texts if the LLM call fails or returns an unexpected
+    shape — rankers will see unscrubed text rather than no text.
+    """
+    if not texts:
+        return []
+
+    numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
+    prompt = (
+        "Rewrite each of the following factual claims and framing assumptions in neutral, "
+        "third-person, technical prose. Remove stylistic fingerprints (first-person phrasing, "
+        "idiomatic expressions, hedging patterns) while preserving exact semantic content.\n\n"
+        "Return ONLY a JSON array of rewritten strings in the same order as the input:\n"
+        "[\"<rewritten 1>\", \"<rewritten 2>\", ...]\n\n"
+        "Input items:\n" + numbered
+    )
+    response = await query_model(
+        SCRUBBER_MODEL,
+        [{"role": "user", "content": prompt}],
+        timeout=30.0,
+    )
+    if response is None:
+        print("[scrub] metadata scrub failed (LLM unavailable) — using original unscrubbed texts")
+        return texts
+
+    raw = response.get("content", "").strip()
+    start = raw.find("[")
+    end = raw.rfind("]")
+    if start == -1 or end == -1 or end <= start:
+        print("[scrub] metadata scrub returned unparseable output — using original unscrubbed texts")
+        return texts
+
+    try:
+        rewritten = _json.loads(raw[start:end + 1])
+        if isinstance(rewritten, list) and len(rewritten) == len(texts):
+            return [str(s) for s in rewritten]
+        print(f"[scrub] metadata scrub returned {len(rewritten) if isinstance(rewritten, list) else 'non-list'} items, expected {len(texts)} — using original unscrubbed texts")
+    except (_json.JSONDecodeError, ValueError):
+        print("[scrub] metadata scrub returned invalid JSON — using original unscrubbed texts")
+
+    return texts
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -246,10 +259,148 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
                 "confidence": meta["confidence"],
                 "confidence_source": meta["confidence_source"],
                 "key_assumptions": meta["key_assumptions"],
+                "factual_claims": meta["factual_claims"],
                 "known_unknowns": meta["known_unknowns"],
             })
+        else:
+            print(f"[stage1] model {model} returned no response — excluded from council")
 
+    print(f"[stage1] {len(stage1_results)}/{len(COUNCIL_MODELS)} models responded")
     return stage1_results
+
+
+async def _build_scrubbed_metadata(
+    stage1_results: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, List[str]]]:
+    """
+    Batch-scrub all factual claims and key assumptions across all Stage 1 models.
+
+    Builds a flat list, sends a single LLM call via _scrub_metadata_texts, then
+    reconstructs per-model data using positional tracking.
+
+    Returns a dict mapping model_id -> {factual_claims: [...], key_assumptions: [...]}.
+    """
+    all_texts: List[str] = []
+    text_positions: Dict[tuple, int] = {}  # (model, field, idx) -> flat index
+
+    for result in stage1_results:
+        model = result["model"]
+        for i, claim in enumerate(result.get("factual_claims") or []):
+            text_positions[(model, "factual_claims", i)] = len(all_texts)
+            all_texts.append(claim)
+        for i, assumption in enumerate(result.get("key_assumptions") or []):
+            text_positions[(model, "key_assumptions", i)] = len(all_texts)
+            all_texts.append(assumption)
+
+    scrubbed_texts = await _scrub_metadata_texts(all_texts)
+
+    scrubbed_meta: Dict[str, Dict[str, List[str]]] = {}
+    for result in stage1_results:
+        model = result["model"]
+        scrubbed_meta[model] = {
+            "factual_claims": [
+                scrubbed_texts[text_positions[(model, "factual_claims", i)]]
+                for i in range(len(result.get("factual_claims") or []))
+            ],
+            "key_assumptions": [
+                scrubbed_texts[text_positions[(model, "key_assumptions", i)]]
+                for i in range(len(result.get("key_assumptions") or []))
+            ],
+        }
+    return scrubbed_meta
+
+
+async def _query_ranker(
+    ranker_model: str,
+    stage1_results: List[Dict[str, Any]],
+    labels: List[str],
+    model_to_label: Dict[str, str],
+    scrubbed_meta: Dict[str, Dict[str, List[str]]],
+    user_query: str,
+) -> Tuple[str, Any]:
+    """
+    Build a ranking prompt for one ranker model and query it.
+
+    Each ranker sees all peer responses except its own (self-exclusion to
+    eliminate self-serving bias). Returns (ranker_model, response_or_None).
+    """
+    own_label = model_to_label.get(ranker_model)
+    visible = [
+        (label, result)
+        for label, result in zip(labels, stage1_results)
+        if f"Response {label}" != own_label
+    ]
+
+    if not visible:
+        return ranker_model, None
+
+    response_blocks = []
+    for label, result in visible:
+        block = f"Response {label}:\n{result['response']}"
+        meta_lines = []
+        if result.get("confidence") is not None:
+            src = result.get("confidence_source")
+            src_tag = f" ({src})" if src else ""
+            meta_lines.append(f"Confidence: {result['confidence']}/100{src_tag}")
+
+        sm = scrubbed_meta.get(result["model"], {})
+        if sm.get("factual_claims"):
+            claims_str = "; ".join(f'"{c}"' for c in sm["factual_claims"])
+            meta_lines.append(f"Factual claims: {claims_str}")
+        if sm.get("key_assumptions"):
+            assumptions_str = "; ".join(f'"{a}"' for a in sm["key_assumptions"])
+            meta_lines.append(f"Framing assumptions: {assumptions_str}")
+
+        n_unknowns = len(result.get("known_unknowns") or [])
+        if n_unknowns > 0:
+            meta_lines.append(f"Unknowns listed: {n_unknowns}")
+
+        if meta_lines:
+            block += "\n\n" + "\n".join(meta_lines)
+        response_blocks.append(block)
+
+    responses_text = "\n\n---\n\n".join(response_blocks)
+
+    ranking_prompt = f"""You are evaluating responses to the following question:
+
+Question: {user_query}
+
+Here are {len(visible)} responses from anonymous models (your own response has been excluded to eliminate self-serving bias):
+
+{responses_text}
+
+Your task:
+1. Evaluate each response individually: what it does well and what it does poorly.
+2. At the very end, provide a final ranking.
+
+EPISTEMIC CALIBRATION — apply when ranking:
+Treat all metadata (confidence scores, factual claims, assumptions) as TESTIMONY — a model's
+self-assessment, not verified truth. Evaluate whether that self-assessment is appropriate.
+
+Reward calibration:
+- A model reporting "reasoned 65" on a contested topic shows better epistemic hygiene
+  than one reporting "recalled 90" on the same topic.
+- A model whose factual claims are specific, falsifiable, and proportionate to its stated
+  confidence should be ranked UP.
+
+Penalize Epistemic Arrogance: If a model claims ≥90 ("recalled") on any of:
+  - Topics actively debated, evolving, or unresolved in the field
+  - Philosophical, normative, or value-laden questions with no empirical ground truth
+  - Causal predictions requiring inference, not stable memory
+  - Specific claims that are vague or unfalsifiable despite a high confidence score
+...rank that response DOWN for poor calibration. Overconfidence is more dangerous than stated uncertainty.
+
+IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
+- Start with "FINAL RANKING:" (all caps, with colon)
+- List responses from best to worst as a numbered list
+- Each line: number, period, space, response label ONLY (e.g., "1. Response A")
+- Do not add explanations in the ranking section
+
+Now provide your evaluation and ranking:"""
+
+    messages = [{"role": "user", "content": ranking_prompt}]
+    response = await query_model(ranker_model, messages)
+    return ranker_model, response
 
 
 async def stage2_collect_rankings(
@@ -257,103 +408,53 @@ async def stage2_collect_rankings(
     stage1_results: List[Dict[str, Any]]
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
-    Stage 2: Each model ranks the anonymized responses.
+    Stage 2: Each model ranks the anonymized responses of its peers (not itself).
 
-    Args:
-        user_query: The original user query
-        stage1_results: Results from Stage 1
-
-    Returns:
-        Tuple of (rankings list, label_to_model mapping)
+    Self-exclusion eliminates self-serving bias. Metadata texts are style-scrubbed
+    before being shown to rankers to prevent de-anonymization via phrasing fingerprints.
+    calculate_aggregate_rankings() handles missing self-ranks by averaging only the
+    positions each model actually receives.
     """
-    # Create anonymized labels for responses (Response A, Response B, etc.)
-    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
-
-    # Create mapping from label to model name
+    labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, D
     label_to_model = {
-        f"Response {label}": result['model']
+        f"Response {label}": result["model"]
         for label, result in zip(labels, stage1_results)
     }
+    model_to_label = {v: k for k, v in label_to_model.items()}
 
-    # Build the ranking prompt.
-    # Anonymity rule: show confidence + source (numeric signal) but only the
-    # *count* of assumptions/unknowns — never their text. Showing the full
-    # text would let rankers identify models by phrasing style and rank
-    # strategically rather than objectively.
-    response_blocks = []
-    for label, result in zip(labels, stage1_results):
-        block = f"Response {label}:\n{result['response']}"
-        meta_lines = []
-        if result.get("confidence") is not None:
-            src = result.get("confidence_source")
-            src_tag = f" ({src})" if src else ""
-            meta_lines.append(f"Confidence: {result['confidence']}/100{src_tag}")
-        n_assumptions = len(result.get("key_assumptions") or [])
-        n_unknowns = len(result.get("known_unknowns") or [])
-        if n_assumptions > 0:
-            meta_lines.append(f"Assumptions listed: {n_assumptions}")
-        if n_unknowns > 0:
-            meta_lines.append(f"Unknowns listed: {n_unknowns}")
-        if meta_lines:
-            block += "\n\n" + "\n".join(meta_lines)
-        response_blocks.append(block)
-    responses_text = "\n\n---\n\n".join(response_blocks)
+    scrubbed_meta = await _build_scrubbed_metadata(stage1_results)
 
-    ranking_prompt = f"""You are evaluating different responses to the following question:
+    responded_models = [r["model"] for r in stage1_results]
+    ranking_responses = await asyncio.gather(
+        *[
+            _query_ranker(m, stage1_results, labels, model_to_label, scrubbed_meta, user_query)
+            for m in responded_models
+        ]
+    )
 
-Question: {user_query}
-
-Here are the responses from different models (anonymized):
-
-{responses_text}
-
-Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
-
-IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- Do not add any other text or explanations in the ranking section
-
-Example of the correct format for your ENTIRE response:
-
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
-
-FINAL RANKING:
-1. Response C
-2. Response A
-3. Response B
-
-Now provide your evaluation and ranking:"""
-
-    messages = [{"role": "user", "content": ranking_prompt}]
-
-    # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
-
-    # Format results
     stage2_results = []
-    for model, response in responses.items():
+    for model, response in ranking_responses:
         if response is not None:
-            full_text = response.get('content', '')
-            parsed = parse_ranking_from_text(full_text)
+            full_text = response.get("content", "")
             stage2_results.append({
                 "model": model,
                 "ranking": full_text,
-                "parsed_ranking": parsed
+                "parsed_ranking": parse_ranking_from_text(full_text),
             })
+        else:
+            print(f"[stage2] ranker {model} returned no response — excluded from rankings")
 
+    print(f"[stage2] {len(stage2_results)}/{len(responded_models)} rankers responded")
     return stage2_results, label_to_model
 
 
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    verification_results: List[Dict[str, Any]] = None,
+    settled_facts: List[Dict[str, Any]] = None,
+    prior_synthesis: str = None,
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -362,11 +463,28 @@ async def stage3_synthesize_final(
         user_query: The original user query
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
+        verification_results: Optional Stage 2.5 validation blocks (grouped by model)
+        settled_facts: VERIFIED claims from prior turns in this session
+        prior_synthesis: The Chairman's synthesis from the immediately preceding turn
 
     Returns:
         Dict with 'model' and 'response' keys
     """
-    # Build comprehensive context for chairman — include metadata per model
+    # Build [PRIOR COUNCIL CONTEXT] block if session memory is available
+    prior_context_block = ""
+    if settled_facts or prior_synthesis:
+        prior_lines = ["[PRIOR COUNCIL CONTEXT]"]
+        if settled_facts:
+            prior_lines.append("Settled Facts (externally verified in this session):")
+            for fact in settled_facts:
+                source = f" (source: {fact['source']})" if fact.get("source") else ""
+                prior_lines.append(f"  - \"{fact['text']}\"{source}")
+        if prior_synthesis:
+            prior_lines.append("\nMost Recent Chairman Synthesis:")
+            prior_lines.append(prior_synthesis)
+        prior_context_block = "\n".join(prior_lines) + "\n\n"
+
+    # Build comprehensive Stage 1 context — Chairman sees full metadata
     stage1_blocks = []
     for result in stage1_results:
         lines = [f"Model: {result['model']}", f"Response: {result['response']}"]
@@ -374,6 +492,8 @@ async def stage3_synthesize_final(
             src = result.get("confidence_source")
             src_tag = f" ({src})" if src else ""
             lines.append(f"Confidence: {result['confidence']}/100{src_tag}")
+        if result.get("factual_claims"):
+            lines.append(f"Factual claims: {result['factual_claims']}")
         if result.get("key_assumptions"):
             lines.append(f"Key assumptions: {result['key_assumptions']}")
         if result.get("known_unknowns"):
@@ -386,30 +506,35 @@ async def stage3_synthesize_final(
         for result in stage2_results
     ])
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+    # Inject Stage 2.5 verification context (grouped by model) if available
+    verification_section = ""
+    if verification_results:
+        verification_context = format_verification_context(verification_results)
+        if verification_context:
+            verification_section = f"\n\nSTAGE 2.5 — External Fact-Check:\n{verification_context}\n"
+
+    chairman_prompt = f"""{prior_context_block}You are the Chairman of an LLM Council. Multiple AI models have answered a question and peer-ranked each other.
+
+SYNTHESIS PROTOCOL — apply in this order:
+1. EXTERNAL PRIMACY: Claims marked [✓ VERIFIED] are externally confirmed — treat them as ground truth. Claims marked [! CONTRADICTED] must be corrected in your synthesis, not averaged away. Claims marked [~ CONTESTED] represent genuine disagreement — describe both positions; do not pick a winner.
+2. DIAGNOSTIC MODE: If council models explicitly disagree on a factual claim AND Stage 2.5 returned UNVERIFIABLE or CONTESTED for that claim, report the disagreement explicitly rather than guessing a resolution.
+3. SETTLED FACTS: If prior session context includes Settled Facts relevant to this query, anchor your synthesis with them.
+4. CONSENSUS: Where models agree and no verification conflicts, synthesize normally.
 
 Original Question: {user_query}
 
-STAGE 1 - Individual Responses:
+STAGE 1 — Individual Responses:
 {stage1_text}
 
-STAGE 2 - Peer Rankings:
-{stage2_text}
-
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
-
+STAGE 2 — Peer Rankings:
+{stage2_text}{verification_section}
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model
     response = await query_model(CHAIRMAN_MODEL, messages)
 
     if response is None:
-        # Fallback if chairman fails
         return {
             "model": CHAIRMAN_MODEL,
             "response": "Error: Unable to generate final synthesis."
@@ -417,7 +542,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     return {
         "model": CHAIRMAN_MODEL,
-        "response": response.get('content', '')
+        "response": response.get("content", "")
     }
 
 
@@ -471,10 +596,7 @@ def calculate_aggregate_rankings(
     model_positions = defaultdict(list)
 
     for ranking in stage2_results:
-        ranking_text = ranking['ranking']
-
-        # Parse the ranking from the structured format
-        parsed_ranking = parse_ranking_from_text(ranking_text)
+        parsed_ranking = ranking['parsed_ranking']
 
         for position, label in enumerate(parsed_ranking, start=1):
             if label in label_to_model:
@@ -517,8 +639,7 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    response = await query_model(SCRUBBER_MODEL, messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title
@@ -536,43 +657,3 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
-    """
-    Run the complete 3-stage council process.
-
-    Args:
-        user_query: The user's question
-
-    Returns:
-        Tuple of (stage1_results, stage2_results, stage3_result, metadata)
-    """
-    # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
-
-    # If no models responded successfully, return error
-    if not stage1_results:
-        return [], [], {
-            "model": "error",
-            "response": "All models failed to respond. Please try again."
-        }, {}
-
-    # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
-
-    # Calculate aggregate rankings
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-
-    # Stage 3: Synthesize final answer
-    stage3_result = await stage3_synthesize_final(
-        user_query,
-        stage1_results,
-        stage2_results
-    )
-
-    # Prepare metadata
-    metadata = {
-        "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
-    }
-
-    return stage1_results, stage2_results, stage3_result, metadata

@@ -162,6 +162,34 @@
   border-color: #ccc;
 }
 
+/* ── Error banner ── */
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #fef2f2;
+  border-top: 1px solid #fca5a5;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.error-dismiss {
+  background: none;
+  border: none;
+  color: #dc2626;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.error-dismiss:hover {
+  color: #b91c1c;
+}
+
 /* ── Scrub indicator (Phase 0 marker on user messages) ── */
 .scrub-indicator {
   margin-top: 6px;

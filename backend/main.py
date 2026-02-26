@@ -11,7 +11,6 @@ import asyncio
 
 from . import storage
 from .council import (
-    run_full_council,
     generate_conversation_title,
     phase0_scrub_prompt,
     stage1_collect_responses,
@@ -19,6 +18,7 @@ from .council import (
     stage3_synthesize_final,
     calculate_aggregate_rankings,
 )
+from .verifier import stage25_verify_claims
 
 app = FastAPI(title="LLM Council API")
 
@@ -101,49 +101,6 @@ async def scrub_prompt(conversation_id: str, request: ScrubRequest):
     return await phase0_scrub_prompt(request.content)
 
 
-@app.post("/api/conversations/{conversation_id}/message")
-async def send_message(conversation_id: str, request: SendMessageRequest):
-    """
-    Send a message and run the 3-stage council process.
-    Returns the complete response with all stages.
-    """
-    # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id)
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # Check if this is the first message
-    is_first_message = len(conversation["messages"]) == 0
-
-    # Add user message
-    storage.add_user_message(conversation_id, request.content)
-
-    # If this is the first message, generate a title
-    if is_first_message:
-        title = await generate_conversation_title(request.content)
-        storage.update_conversation_title(conversation_id, title)
-
-    # Run the 3-stage council process
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content
-    )
-
-    # Add assistant message with all stages
-    storage.add_assistant_message(
-        conversation_id,
-        stage1_results,
-        stage2_results,
-        stage3_result
-    )
-
-    # Return the complete response with metadata
-    return {
-        "stage1": stage1_results,
-        "stage2": stage2_results,
-        "stage3": stage3_result,
-        "metadata": metadata
-    }
-
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
 async def send_message_stream(conversation_id: str, request: SendMessageRequest):
@@ -183,10 +140,36 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
+            # Stage 2.5: Verify high-confidence claims — isolated try/except so
+            # a verifier failure never kills Stage 3 or the rest of the stream.
+            yield f"data: {json.dumps({'type': 'stage25_start'})}\n\n"
+            try:
+                top2_model_ids = {r["model"] for r in aggregate_rankings[:2]}
+                top2_results = [r for r in stage1_results if r["model"] in top2_model_ids]
+                verification_results = await stage25_verify_claims(top2_results, query)
+            except Exception as e:
+                print(f"[stage25] error (degrading gracefully): {e}")
+                verification_results = []
+            yield f"data: {json.dumps({'type': 'stage25_complete', 'data': verification_results})}\n\n"
+
+            # Load session memory for Chairman context.
+            # `conversation` is the pre-turn snapshot — reflects prior turns only.
+            settled_facts = conversation.get("settled_facts", [])
+            prior_synthesis = storage.get_prior_synthesis(conversation)
+
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(query, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(
+                query, stage1_results, stage2_results, verification_results,
+                settled_facts=settled_facts,
+                prior_synthesis=prior_synthesis,
+            )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+
+            # Persist newly VERIFIED claims as Settled Facts for future turns
+            new_settled_facts = storage.build_new_settled_facts(verification_results, conversation)
+            if new_settled_facts:
+                storage.add_settled_facts(conversation_id, new_settled_facts)
 
             # Wait for title generation if it was started
             if title_task:
@@ -199,7 +182,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 conversation_id,
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                stage25=verification_results,
             )
 
             # Send completion event

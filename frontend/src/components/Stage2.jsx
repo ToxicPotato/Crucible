@@ -28,8 +28,12 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
 
       <h4>Raw Evaluations</h4>
       <p className="stage-description">
-        Each model evaluated all responses (anonymized as Response A, B, C, etc.) and provided rankings.
-        Below, model names are shown in <strong>bold</strong> for readability, but the original evaluation used anonymous labels.
+        Each model evaluated peer responses (labeled Response A, B, C, etc.) and provided rankings.
+        Metadata texts were style-scrubbed before evaluation to prevent de-anonymization.
+        {labelToModel
+          ? <> Model names are shown in <strong>bold</strong> below for readability.</>
+          : <> <span className="stage-notice">Model identities are not available for historical conversations — anonymous labels are shown as-is.</span></>
+        }
       </p>
 
       <div className="tabs">

@@ -44,13 +44,16 @@ async def query_model(
             data = response.json()
             message = data['choices'][0]['message']
 
+            content = message.get('content')
+            if content is None:
+                print(f"[openrouter] Warning: model {model} returned null content — coercing to empty string")
             return {
-                'content': message.get('content'),
+                'content': content or '',
                 'reasoning_details': message.get('reasoning_details')
             }
 
     except Exception as e:
-        print(f"Error querying model {model}: {e}")
+        print(f"Error querying model {model}: {type(e).__name__}: {e}")
         return None
 
 

@@ -20,6 +20,11 @@
   line-height: 1.5;
 }
 
+.stage-notice {
+  color: #b45309;
+  font-style: italic;
+}
+
 .aggregate-rankings {
   background: var(--color-primary-light);
   padding: 16px;

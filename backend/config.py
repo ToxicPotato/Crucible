@@ -22,7 +22,7 @@ CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 # Scrubber model - Phase 0 prompt neutralization (fast + cheap)
 SCRUBBER_MODEL = "google/gemini-2.5-flash"
 
-# Set to True once SCRUBBER_SYSTEM_PROMPT is written in council.py
+# Set to False to disable Phase 0 scrubbing without removing code
 PHASE0_ENABLED = True
 
 # OpenRouter API endpoint
@@ -30,3 +30,16 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
+
+# ---------------------------------------------------------------------------
+# Stage 2.5 — Spot-check Verifier
+# ---------------------------------------------------------------------------
+# Model used for claim extraction, search query generation, and validation.
+# Gemini Flash is fast/cheap — validation tasks are simple, latency matters.
+VERIFIER_MODEL = "google/gemini-2.5-flash"
+
+# Set to False to disable Stage 2.5 verification without removing code
+STAGE25_ENABLED = True
+
+# Tavily Search API key — get a free key at https://tavily.com
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")

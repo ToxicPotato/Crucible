@@ -5,6 +5,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
     volumes:
       - conversation-data:/app/data/conversations
     ports:

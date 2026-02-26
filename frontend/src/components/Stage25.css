@@ -1,0 +1,175 @@
+.stage25 {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.stage25-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.summary-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.summary-pill--contradicted {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+
+.summary-pill--contested {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.summary-pill--verified {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #86efac;
+}
+
+/* ── Verdict list ── */
+
+.verdict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verdict-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.verdict-row--contradicted {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.verdict-row--verified {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.verdict-row--contested {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.verdict-row--unverifiable {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  opacity: 0.75;
+}
+
+/* ── Badge ── */
+
+.verdict-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.verdict-badge--contradicted {
+  background: #dc2626;
+  color: white;
+}
+
+.verdict-badge--verified {
+  background: #16a34a;
+  color: white;
+}
+
+.verdict-badge--contested {
+  background: #b45309;
+  color: white;
+}
+
+.verdict-badge--unverifiable {
+  background: #9ca3af;
+  color: white;
+}
+
+/* ── Body ── */
+
+.verdict-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.verdict-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.verdict-model {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.verdict-confidence {
+  font-size: 11px;
+  color: #999;
+}
+
+.verdict-claim {
+  font-size: 13px;
+  color: #222;
+  font-style: italic;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.verdict-delta {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.verdict-delta--contradicted {
+  color: #b91c1c;
+}
+
+.verdict-delta--contested {
+  color: #b45309;
+}
+
+.verdict-source {
+  display: block;
+  font-size: 11px;
+  color: var(--color-primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.verdict-source:hover {
+  text-decoration: underline;
+}

@@ -3,12 +3,6 @@ import ReactMarkdown from 'react-markdown';
 import { getModelShortName } from '../utils';
 import './Stage1.css';
 
-const SOURCE_LABELS = {
-  recalled:    'recalled',
-  reasoned:    'reasoned',
-  speculative: 'speculative',
-};
-
 function ConfidenceBadge({ value, source }) {
   if (value == null) return null;
   const color =
@@ -22,7 +16,7 @@ function ConfidenceBadge({ value, source }) {
       </span>
       {source && (
         <span className={`source-pill source-${source}`}>
-          {SOURCE_LABELS[source] ?? source}
+          {source}
         </span>
       )}
     </span>
@@ -50,6 +44,7 @@ export default function Stage1({ responses }) {
   const active = responses[activeTab];
   const hasMetadata =
     active.confidence != null ||
+    (active.factual_claims && active.factual_claims.length > 0) ||
     (active.key_assumptions && active.key_assumptions.length > 0) ||
     (active.known_unknowns && active.known_unknowns.length > 0);
 
@@ -84,6 +79,12 @@ export default function Stage1({ responses }) {
                   value={active.confidence}
                   source={active.confidence_source}
                 />
+              </div>
+            )}
+            {active.factual_claims && active.factual_claims.length > 0 && (
+              <div className="meta-row">
+                <span className="meta-label">Facts</span>
+                <MetaChips items={active.factual_claims} variant="fact" />
               </div>
             )}
             {active.key_assumptions && active.key_assumptions.length > 0 && (

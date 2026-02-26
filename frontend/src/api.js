@@ -47,26 +47,6 @@ export const api = {
   },
 
   /**
-   * Send a message in a conversation.
-   */
-  async sendMessage(conversationId, content) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
-    return response.json();
-  },
-
-  /**
    * Phase 0: Sanitize a prompt before sending to the council.
    * @param {string} conversationId - The conversation ID
    * @param {string} content - The raw user message
@@ -117,13 +97,17 @@ export const api = {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
+      // Accumulate into a buffer so events split across TCP chunks are reassembled
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      // Retain the last (potentially incomplete) line for the next chunk
+      buffer = lines.pop() ?? '';
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {

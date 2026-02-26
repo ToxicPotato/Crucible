@@ -12,6 +12,7 @@ function App() {
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [phase0State, setPhase0State] = useState(PHASE0_IDLE);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   // Load conversations on mount
   useEffect(() => {
@@ -40,10 +41,12 @@ function App() {
       setCurrentConversation(conv);
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      setErrorMessage('Failed to load conversation. Please try again.');
     }
   };
 
   const handleNewConversation = async () => {
+    setErrorMessage(null);
     try {
       const newConv = await api.createConversation();
       setConversations([
@@ -58,6 +61,7 @@ function App() {
 
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+    setErrorMessage(null);
   };
 
   // Phase 0: scrub prompt and show review card (no credits spent yet)
@@ -65,6 +69,7 @@ function App() {
     if (!currentConversationId) return;
 
     setIsLoading(true);
+    setErrorMessage(null);
 
     // Optimistically add user message to UI
     setCurrentConversation((prev) => ({
@@ -84,6 +89,7 @@ function App() {
       });
     } catch (error) {
       console.error('Phase 0 failed:', error);
+      setErrorMessage('Failed to analyze your prompt. Please try again.');
       // Scrubber failed — remove optimistic message and reset
       setCurrentConversation((prev) => ({
         ...prev,
@@ -105,9 +111,10 @@ function App() {
           role: 'assistant',
           stage1: null,
           stage2: null,
+          stage25: null,
           stage3: null,
           metadata: null,
-          loading: { stage1: false, stage2: false, stage3: false },
+          loading: { stage1: false, stage2: false, stage25: false, stage3: false },
         },
       ],
     }));
@@ -115,7 +122,10 @@ function App() {
     const updateLastMessage = (updater) => {
       setCurrentConversation((prev) => {
         const messages = [...prev.messages];
-        updater(messages[messages.length - 1]);
+        const last = { ...messages[messages.length - 1] };
+        last.loading = { ...last.loading };
+        updater(last);
+        messages[messages.length - 1] = last;
         return { ...prev, messages };
       });
     };
@@ -138,6 +148,12 @@ function App() {
             case 'stage2_complete':
               updateLastMessage((msg) => { msg.stage2 = event.data; msg.metadata = event.metadata; msg.loading.stage2 = false; });
               break;
+            case 'stage25_start':
+              updateLastMessage((msg) => { msg.loading.stage25 = true; });
+              break;
+            case 'stage25_complete':
+              updateLastMessage((msg) => { msg.stage25 = event.data; msg.loading.stage25 = false; });
+              break;
             case 'stage3_start':
               updateLastMessage((msg) => { msg.loading.stage3 = true; });
               break;
@@ -145,7 +161,9 @@ function App() {
               updateLastMessage((msg) => { msg.stage3 = event.data; msg.loading.stage3 = false; });
               break;
             case 'title_complete':
-              loadConversations();
+              setConversations((prev) =>
+                prev.map((c) => c.id === currentConversationId ? { ...c, title: event.data.title } : c)
+              );
               break;
             case 'complete':
               loadConversations();
@@ -153,6 +171,7 @@ function App() {
               break;
             case 'error':
               console.error('Stream error:', event.message);
+              setErrorMessage(event.message || 'An error occurred during processing.');
               setIsLoading(false);
               break;
           }
@@ -161,6 +180,7 @@ function App() {
       );
     } catch (error) {
       console.error('Failed to send message:', error);
+      setErrorMessage('Failed to send message. Please try again.');
       setCurrentConversation((prev) => ({
         ...prev,
         messages: prev.messages.slice(0, -2),
@@ -222,6 +242,8 @@ function App() {
         onPhase0UseOriginal={handlePhase0UseOriginal}
         onPhase0UseScrubbed={handlePhase0UseScrubbed}
         onPhase0Decline={handlePhase0Decline}
+        errorMessage={errorMessage}
+        onDismissError={() => setErrorMessage(null)}
       />
     </div>
   );

@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import Stage1 from './Stage1';
+import Stage2 from './Stage2';
+import Stage25 from './Stage25';
+import Stage3 from './Stage3';
+import Phase0Review from './Phase0Review';
+import './ChatInterface.css';
 
 function ScrubIndicator({ original, reasoning }) {
   const [open, setOpen] = useState(false);
@@ -28,12 +35,6 @@ function ScrubIndicator({ original, reasoning }) {
     </div>
   );
 }
-import ReactMarkdown from 'react-markdown';
-import Stage1 from './Stage1';
-import Stage2 from './Stage2';
-import Stage3 from './Stage3';
-import Phase0Review from './Phase0Review';
-import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
@@ -43,6 +44,8 @@ export default function ChatInterface({
   onPhase0UseOriginal,
   onPhase0UseScrubbed,
   onPhase0Decline,
+  errorMessage,
+  onDismissError,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -135,6 +138,15 @@ export default function ChatInterface({
                     />
                   )}
 
+                  {/* Stage 2.5 */}
+                  {msg.loading?.stage25 && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Stage 2.5: Verifying high-confidence claims...</span>
+                    </div>
+                  )}
+                  {msg.stage25 && <Stage25 results={msg.stage25} />}
+
                   {/* Stage 3 */}
                   {msg.loading?.stage3 && (
                     <div className="stage-loading">
@@ -149,7 +161,7 @@ export default function ChatInterface({
           ))
         )}
 
-        {phase0State && (phase0State.status === 'scrubbing' || phase0State.status === 'pending') && (
+        {(phase0State.status === 'scrubbing' || phase0State.status === 'pending') && (
           <Phase0Review
             phase0State={phase0State}
             onUseOriginal={onPhase0UseOriginal}
@@ -167,6 +179,13 @@ export default function ChatInterface({
 
         <div ref={messagesEndRef} />
       </div>
+
+      {errorMessage && (
+        <div className="error-banner">
+          <span>{errorMessage}</span>
+          <button className="error-dismiss" onClick={onDismissError}>×</button>
+        </div>
+      )}
 
       {conversation.messages.length === 0 && (
         <form className="input-form" onSubmit={handleSubmit}>
