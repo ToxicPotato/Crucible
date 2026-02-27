@@ -1,0 +1,149 @@
+/* ── Backdrop ── */
+.epistemic-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 499;
+  background: rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-out;
+}
+
+.epistemic-backdrop--open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Drawer panel ── */
+.epistemic-drawer {
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100vh;
+  width: 380px;
+  z-index: 500;
+  background: #ffffff;
+  border-left: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-out;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+}
+
+.epistemic-drawer--open {
+  transform: translateX(0);
+}
+
+/* ── Header ── */
+.epistemic-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.epistemic-drawer-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.epistemic-drawer-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #888;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.epistemic-drawer-close:hover {
+  color: #333;
+}
+
+/* ── Body ── */
+.epistemic-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Sections ── */
+.drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drawer-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #999;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.drawer-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawer-meta-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #888;
+  min-width: 76px;
+}
+
+.drawer-meta-value {
+  font-size: 13px;
+  color: #444;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Consensus badge (drawer copy — mirrors EpistemicSummary.css) ── */
+.drawer-section .consensus-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.drawer-section .consensus--unanimous {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.drawer-section .consensus--majority {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.drawer-section .consensus--split {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.drawer-section .consensus--unknown {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* ── Empty state ── */
+.drawer-empty {
+  font-size: 13px;
+  color: #999;
+  text-align: center;
+  padding: 32px 0;
+}

@@ -154,7 +154,7 @@ SSE stream: {stage1_start, stage1_complete, stage2_start, stage2_complete,
 
 **`App.jsx`** — Phase 0 state machine: `idle → scrubbing → pending → idle`. `handleSendMessage` triggers scrub; user can then: `handlePhase0UseScrubbed(scrubbedContent)` (council uses scrubbed, shows badge on message), `handlePhase0UseOriginal()` (council uses original text unchanged), or `handlePhase0Decline()` (removes optimistic message, resets to idle). `runCouncilStream(originalContent, scrubbedContent)` handles SSE event processing.
 
-**`components/ChatInterface.jsx`** — renders the full message thread. Shows `ScrubIndicator` badge on user messages where `usedScrubbed === true` (expandable, shows original + reasoning). Input form only shown when `conversation.messages.length === 0` (no persistent input bar). Error banner at bottom, dismissible. Shows stage-specific loading spinners between SSE events.
+**`components/ChatInterface.jsx`** — renders the full message thread. Shows `ScrubIndicator` badge on user messages where `usedScrubbed === true` (expandable, shows original + reasoning). Input form only shown when `conversation.messages.length === 0` (no persistent input bar). Error banner at bottom, dismissible. Shows stage-specific loading spinners between SSE events. Manages `drawerOpenForIndex` state for `EpistemicDrawer`. When `msg.stage3` is present, renders the composite `EpistemicSummary + Stage3Annotated + MinorityReport` in place of the old `Stage3`. `EpistemicDrawer` is rendered outside `messages-container` (always mounted, visibility controlled by `open` prop) so it overlays the full viewport.
 
 **`components/Phase0Review.jsx`** — SCRUBBING state: spinner. PENDING state: two-column original/scrubbed diff, "no changes" tag when identical; three action buttons if changed: "Cancel" / "Use Original" / "Use Scrubbed →"; single "Continue →" if unchanged.
 
@@ -164,7 +164,25 @@ SSE stream: {stage1_start, stage1_complete, stage2_start, stage2_complete,
 
 **`components/Stage25.jsx`** — verdict cards between Stage 2 and Stage 3. Sorted `CONTRADICTED → CONTESTED → VERIFIED → UNVERIFIABLE`. `CONTRADICTED`: red. `CONTESTED`: amber (new verdict — credible evidence on both sides). `VERIFIED`: green. `UNVERIFIABLE`: gray/muted (0.75 opacity). Summary pills show counts for CONTRADICTED, CONTESTED, VERIFIED only (UNVERIFIABLE excluded from pills). Each card shows: model short name, original confidence, claim text, delta explanation, source URL.
 
-**`components/Stage3.jsx`** — minimal wrapper around chairman synthesis. Shows model short name and response markdown. Session memory (`settled_facts`, `prior_synthesis`) is backend-only — not rendered in UI.
+**`components/Stage3.jsx`** — minimal wrapper around chairman synthesis. Not used directly in `ChatInterface` — wrapped by `Stage3Annotated` (which imports `Stage3.css`). Session memory (`settled_facts`, `prior_synthesis`) is backend-only — not rendered in UI.
+
+**`utils/epistemic.js`** — pure utility functions (no React deps):
+- `calcVerdict(stage25, stage1)`: Epistemic Waterfall — Step 1: any CONTRADICTED→`Disputed`, all actionable VERIFIED→`Verified`; Step 2: avgConf<50→`Uncertain`, claim overlap≥0.5 + avgConf≥65→`Consensus`, else `Split`/`Uncertain`. Returns `Verified|Disputed|Consensus|Split|Uncertain|Unknown`.
+- `calcPeerAlignment(aggregateRankings)`: spread-based — spread≤0.3→`Unanimous`, ≤0.8→`Majority`, else `Split`.
+- `calcConfidenceRange(stage1)`: `{min, max}` or null.
+- `getMinorityModel(aggregateRankings)`: worst-ranked model if gap vs second-worst > 0.5, else null.
+- `groupClaimsByVerdict(stage25)`: `{CONTRADICTED, CONTESTED, VERIFIED, UNVERIFIABLE}`.
+- `annotateChairmanText(responseText, stage25)`: injects HTML `<span>` markers into markdown for VERIFIED/CONTRADICTED/CONTESTED claims (end-to-start string surgery).
+
+**`components/EpistemicSummary.jsx`** — collapsible bar between Stage 2.5 and Stage 3. Collapsed header: mode badge + Reliability badge (`calcVerdict`) + verdict pills (CONTRADICTED/CONTESTED/VERIFIED counts) + confidence range. Expanded: Reliability (primary) + Peer Alignment (`calcPeerAlignment`, secondary, drawer/expanded only). Collapsed by default.
+
+**`components/Stage3Annotated.jsx`** — replaces `Stage3` in ChatInterface. Imports `Stage3.css` + `Stage3Annotated.css`. Adds "⊞ Epistemic View" button (calls `onOpenDrawer`). Injects colored underlines via `annotateChairmanText` + `rehype-raw`. Click delegation on `.claim-annotation` spans → `ClaimPopover`. Falls back to plain `ReactMarkdown` when `stage25` is null/empty (no regression for old conversations).
+
+**`components/ClaimPopover.jsx`** — `ReactDOM.createPortal` to `document.body`. `position: fixed`, edge-clamped to viewport. Shows verdict badge + model + confidence + delta + source URL. Dismissed on outside click or Escape.
+
+**`components/MinorityReport.jsx`** — amber collapsible below Stage 3. Only renders when `getMinorityModel()` returns a model. Shows that model's Stage 1 response (clamped 80 words), factual_claims chips, confidence badge.
+
+**`components/EpistemicDrawer.jsx`** — fixed slide-in panel (380px, right edge). Imports `Stage25.css` for verdict card styles. Shows Reliability + Peer Alignment summary + claims grouped by verdict (CONTRADICTED→CONTESTED→VERIFIED→UNVERIFIABLE). Backdrop click or Escape closes.
 
 **`components/Sidebar.jsx`** — conversation list with title and message count. "+ New Conversation" button.
 
@@ -195,7 +213,7 @@ This project uses specialized agents with strict scopes. Each agent must stay wi
 **Responsibility:** Mirror what the backend exposes. If the backend adds a new stage, SSE event, or data field — the frontend must show it clearly to the user. UI should always reflect the current state of the backend pipeline. Prioritize clarity and usability.
 **Rule:** Frontend makes no assumptions about backend logic. It only renders what the backend sends.
 **Entry:** `cd frontend && npm run dev`
-**Key files:** `App.jsx`, `ChatInterface.jsx`, `components/Stage*.jsx`, `components/Phase0Review.jsx`
+**Key files:** `App.jsx`, `ChatInterface.jsx`, `components/Stage*.jsx`, `components/Phase0Review.jsx`, `components/Epistemic*.jsx`, `components/Stage3Annotated.jsx`, `components/ClaimPopover.jsx`, `components/MinorityReport.jsx`, `utils/epistemic.js`
 **Never touch:** `backend/`, `data/`, docker files
 
 **Frontend update trigger:** Any time the backend changes its API response shape, adds SSE events, or exposes new data fields — the frontend-agent must be run to reflect those changes.
@@ -244,11 +262,13 @@ Spawn the appropriate agents to implement: [beskriv tasken]
 
 ## When No Role Is Specified
 
-If a task arrives without an explicit agent role, top-level Claude MUST:
+If no role is specified in the prompt, Claude is top-level orchestrator by default.
+
+As top-level orchestrator, Claude MUST:
 
 1. Identify whether the task crosses domain boundaries (backend + frontend)
 2. Identify whether it contains any design or logic decisions
-3. If yes to either: pause and ask the developer to confirm orchestrator mode before writing a single line of code
+3. Pause and confirm which agent to spawn. The answers to 1 and 2 determine which agent is appropriate — not whether one is needed at all. Spawn the appropriate agent regardless.
 4. Never silently assume "this is small enough to do directly"
 
 ## Post-Task Review Protocol
@@ -262,6 +282,7 @@ After completing any non-trivial task, top-level Claude must check:
 **Never self-apply changes to CLAUDE.md — only propose them.**
 
 When the developer asks for a post-task review:
+
 - Go through the session and list rule violations
 - For each violation, propose a specific fix to this file
 - Present all proposals at once for developer approval before making any edits
@@ -279,6 +300,10 @@ When the developer asks for a post-task review:
 - **factual_claims vs key_assumptions**: `factual_claims` are specific falsifiable facts (primary verification target); `key_assumptions` are framing/interpretation premises. The verifier uses `factual_claims` first and falls back to `key_assumptions` only when the field is absent (backward compatibility with pre-Stage-2.5 conversations).
 - **Stage 2.5 verdicts**: four types — VERIFIED, CONTRADICTED, CONTESTED, UNVERIFIABLE. CONTESTED means credible evidence on both sides; Chairman must report the controversy, not resolve it.
 - **Session memory**: `settled_facts` persisted per conversation in JSON. Injected into Stage 3 as `[PRIOR COUNCIL CONTEXT]`. Stage 3 UI does not display these — backend-only.
+- **Epistemic Waterfall** (`calcVerdict`): primary reliability signal shown to user. Step 1 uses Stage 2.5 external verdicts (CONTRADICTED beats everything → Disputed; all VERIFIED → Verified). Step 2 falls back to Stage 1 claim overlap + avg confidence. Never changes pipeline output — display only.
+- **`reliability-badge` vs `verdict-badge`**: epistemic verdict CSS uses `reliability-badge--{state}` (in `EpistemicSummary.css`). Do not use `verdict-badge--{state}` for this — that class is already used in `Stage25.css` for claim-level verdicts and the names would conflict.
+- **`rehype-raw`**: only used in `Stage3Annotated` when `stage25` is non-empty. When `stage25` is null/empty, plain `ReactMarkdown` is used (no `rehype-raw`). This prevents any regression on old conversations.
+- **Peer Alignment vs Reliability**: two separate signals. Peer Alignment (spread of `aggregate_rankings`) measures response-quality agreement. Reliability (`calcVerdict`) measures factual correctness. They are independent and can diverge — e.g., all models agree on facts (Verified) but peers rate one response much lower (Split alignment).
 
 ## System Prompt Locations
 

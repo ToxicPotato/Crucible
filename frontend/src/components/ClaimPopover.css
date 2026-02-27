@@ -1,0 +1,83 @@
+.claim-popover {
+  position: fixed;
+  width: 300px;
+  z-index: 9999;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.popover-arrow {
+  position: absolute;
+  top: -6px;
+  left: 16px;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border-top: 1px solid #e0e0e0;
+  border-left: 1px solid #e0e0e0;
+  transform: rotate(45deg);
+}
+
+.popover-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.popover-model {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.popover-confidence {
+  font-size: 11px;
+  color: #999;
+}
+
+.popover-claim {
+  font-size: 13px;
+  color: #222;
+  font-style: italic;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.popover-delta {
+  font-size: 12px;
+  color: #555;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.popover-delta--contradicted {
+  color: #b91c1c;
+}
+
+.popover-delta--contested {
+  color: #b45309;
+}
+
+.popover-delta--verified {
+  color: #15803d;
+}
+
+.popover-source {
+  display: block;
+  font-size: 11px;
+  color: var(--color-primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.popover-source:hover {
+  text-decoration: underline;
+}

@@ -3,7 +3,10 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage25 from './Stage25';
-import Stage3 from './Stage3';
+import EpistemicSummary from './EpistemicSummary';
+import Stage3Annotated from './Stage3Annotated';
+import MinorityReport from './MinorityReport';
+import EpistemicDrawer from './EpistemicDrawer';
 import Phase0Review from './Phase0Review';
 import './ChatInterface.css';
 
@@ -48,6 +51,7 @@ export default function ChatInterface({
   onDismissError,
 }) {
   const [input, setInput] = useState('');
+  const [drawerOpenForIndex, setDrawerOpenForIndex] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -84,6 +88,9 @@ export default function ChatInterface({
       </div>
     );
   }
+
+  const drawerMsg =
+    drawerOpenForIndex !== null ? conversation.messages[drawerOpenForIndex] : null;
 
   return (
     <div className="chat-interface">
@@ -147,14 +154,31 @@ export default function ChatInterface({
                   )}
                   {msg.stage25 && <Stage25 results={msg.stage25} />}
 
-                  {/* Stage 3 */}
+                  {/* Stage 3 with epistemic layer */}
                   {msg.loading?.stage3 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
                       <span>Running Stage 3: Final synthesis...</span>
                     </div>
                   )}
-                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                  {msg.stage3 && (
+                    <>
+                      <EpistemicSummary
+                        stage1={msg.stage1}
+                        stage25={msg.stage25}
+                        aggregateRankings={msg.metadata?.aggregate_rankings}
+                      />
+                      <Stage3Annotated
+                        finalResponse={msg.stage3}
+                        stage25={msg.stage25}
+                        onOpenDrawer={() => setDrawerOpenForIndex(index)}
+                      />
+                      <MinorityReport
+                        stage1={msg.stage1}
+                        aggregateRankings={msg.metadata?.aggregate_rankings}
+                      />
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -179,6 +203,15 @@ export default function ChatInterface({
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Drawer lives outside scroll container so it overlays the full viewport */}
+      <EpistemicDrawer
+        open={drawerOpenForIndex !== null && drawerMsg != null}
+        onClose={() => setDrawerOpenForIndex(null)}
+        stage25={drawerMsg?.stage25 ?? null}
+        stage1={drawerMsg?.stage1 ?? null}
+        aggregateRankings={drawerMsg?.metadata?.aggregate_rankings ?? null}
+      />
 
       {errorMessage && (
         <div className="error-banner">
