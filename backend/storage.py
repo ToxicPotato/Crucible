@@ -142,6 +142,8 @@ def add_assistant_message(
     stage2: List[Dict[str, Any]],
     stage3: Dict[str, Any],
     stage25: List[Dict[str, Any]] = None,
+    aggregate_rankings: List[Dict[str, Any]] = None,
+    label_to_model: Dict[str, Any] = None,
 ):
     """
     Add an assistant message with all pipeline stages to a conversation.
@@ -152,6 +154,8 @@ def add_assistant_message(
         stage2: List of model rankings
         stage3: Final synthesized response
         stage25: Stage 2.5 verification verdicts (optional, defaults to empty list)
+        aggregate_rankings: Average rank per model across peer votes (optional)
+        label_to_model: Mapping of anonymized labels to model IDs (optional)
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:
@@ -163,6 +167,10 @@ def add_assistant_message(
         "stage2": stage2,
         "stage25": stage25 or [],
         "stage3": stage3,
+        "metadata": {
+            "aggregate_rankings": aggregate_rankings or [],
+            "label_to_model": label_to_model or {},
+        },
     })
     save_conversation(conversation)
 

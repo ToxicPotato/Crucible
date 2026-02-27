@@ -159,7 +159,11 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             try:
                 top2_model_ids = {r["model"] for r in aggregate_rankings[:2]}
                 top2_results = [r for r in stage1_results if r["model"] in top2_model_ids]
-                verification_results = await stage25_verify_claims(top2_results, query)
+                verification_results = await stage25_verify_claims(
+                    top2_results, query,
+                    stage1_results=stage1_results,
+                    aggregate_rankings=aggregate_rankings,
+                )
             except Exception as e:
                 print(f"[stage25] error (degrading gracefully): {e}")
                 verification_results = []
@@ -197,6 +201,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 stage2_results,
                 stage3_result,
                 stage25=verification_results,
+                aggregate_rankings=aggregate_rankings,
+                label_to_model=label_to_model,
             )
 
             # Send completion event

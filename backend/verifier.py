@@ -57,10 +57,13 @@ Return ONLY a valid JSON object (no markdown fences, no extra text):
 def extract_verifiable_claims(
     top2_results: List[Dict[str, Any]],
     confidence_threshold: int = 75,
-    max_claims: int = 4,
+    max_claims: int = 6,
+    stage1_results: List[Dict[str, Any]] = None,
+    aggregate_rankings: List[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Pull high-confidence verifiable facts from the top-2 ranked models.
+    Pull high-confidence verifiable facts from the top-2 ranked models, plus
+    optionally the Minority Report model (worst-ranked outlier).
 
     Priority order:
       1. `factual_claims` — specific, concrete facts the model explicitly asserts
@@ -69,7 +72,9 @@ def extract_verifiable_claims(
          that predate the factual_claims field
 
     Only targets claims where confidence > threshold (default 75).
-    Caps at max_claims to bound API costs.
+    Cap is 6: up to 4 slots for top-2 models + 2 extra for the minority model.
+    The minority model is only added when its avg_rank gap vs. the second-worst
+    exceeds 0.5 — the same threshold used by the frontend's getMinorityModel.
     """
     claims = []
     for result in top2_results:
@@ -93,6 +98,35 @@ def extract_verifiable_claims(
             for assumption in result.get("key_assumptions") or []:
                 if assumption and assumption.strip():
                     claims.append({**base, "claim": assumption.strip(), "claim_source": "key_assumptions"})
+
+    # Minority Report: verify the worst-ranked outlier if it's genuinely isolated
+    # (gap > 0.5 avg_rank vs second-worst) and high-confidence. Safety valve against
+    # groupthink — the outlier is the only model whose claims may diverge.
+    if stage1_results and aggregate_rankings and len(aggregate_rankings) >= 2:
+        sorted_by_rank = sorted(aggregate_rankings, key=lambda r: r["average_rank"], reverse=True)
+        worst = sorted_by_rank[0]
+        second_worst = sorted_by_rank[1]
+        if worst["average_rank"] - second_worst["average_rank"] > 0.5:
+            minority_model_id = worst["model"]
+            minority_result = next(
+                (r for r in stage1_results if r["model"] == minority_model_id), None
+            )
+            if minority_result:
+                confidence = minority_result.get("confidence") or 0
+                if confidence > confidence_threshold:
+                    existing_texts = {c["claim"] for c in claims}
+                    base = {
+                        "model": minority_result["model"],
+                        "confidence": confidence,
+                        "confidence_source": minority_result.get("confidence_source"),
+                    }
+                    for fact in minority_result.get("factual_claims") or []:
+                        if fact and fact.strip() and fact.strip() not in existing_texts:
+                            claims.append({**base, "claim": fact.strip(), "claim_source": "factual_claims"})
+                    if not minority_result.get("factual_claims"):
+                        for assumption in minority_result.get("key_assumptions") or []:
+                            if assumption and assumption.strip() and assumption.strip() not in existing_texts:
+                                claims.append({**base, "claim": assumption.strip(), "claim_source": "key_assumptions"})
 
     return claims[:max_claims]
 
@@ -335,6 +369,8 @@ def format_verification_context(verification_results: List[Dict[str, Any]]) -> s
 async def stage25_verify_claims(
     top2_results: List[Dict[str, Any]],
     user_query: str,
+    stage1_results: List[Dict[str, Any]] = None,
+    aggregate_rankings: List[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 2.5 orchestrator: extract → generate query pairs → search both → validate.
@@ -346,6 +382,9 @@ async def stage25_verify_claims(
     Corroboration and refutation searches are interleaved as
     [corr0, refu0, corr1, refu1, ...] for a single gather call.
 
+    stage1_results and aggregate_rankings are forwarded to extract_verifiable_claims
+    to enable Minority Report verification (worst-ranked outlier, if isolated).
+
     Returns empty list if Stage 2.5 is disabled, no claims meet the confidence
     threshold, or search is not configured.
     """
@@ -353,7 +392,11 @@ async def stage25_verify_claims(
     if not STAGE25_ENABLED:
         return []
 
-    claims = extract_verifiable_claims(top2_results)
+    claims = extract_verifiable_claims(
+        top2_results,
+        stage1_results=stage1_results,
+        aggregate_rankings=aggregate_rankings,
+    )
     print(f"[stage25] extracted {len(claims)} claims (confidence_threshold=75)")
     if not claims:
         return []
