@@ -5,7 +5,15 @@ export default function Sidebar({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  onDeleteConversation,
 }) {
+  const handleDelete = (e, id) => {
+    e.stopPropagation();
+    if (window.confirm('Delete this conversation? This cannot be undone.')) {
+      onDeleteConversation(id);
+    }
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -30,8 +38,23 @@ export default function Sidebar({
               <div className="conversation-title">
                 {conv.title || 'New Conversation'}
               </div>
-              <div className="conversation-meta">
-                {conv.message_count} messages
+              <div className="conversation-item-footer">
+                <div className="conversation-meta">
+                  {conv.message_count} messages
+                </div>
+                <button
+                  className="delete-conversation-btn"
+                  onClick={(e) => handleDelete(e, conv.id)}
+                  title="Delete conversation"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </button>
               </div>
             </div>
           ))

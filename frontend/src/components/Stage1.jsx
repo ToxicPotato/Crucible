@@ -3,6 +3,26 @@ import ReactMarkdown from 'react-markdown';
 import { getModelShortName } from '../utils';
 import './Stage1.css';
 
+const WORD_THRESHOLD = 80;
+
+function CollapsibleResponse({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text && text.split(/\s+/).filter(Boolean).length > WORD_THRESHOLD;
+
+  return (
+    <div className="response-text">
+      <div className={`markdown-content${isLong && !expanded ? ' response-clamp' : ''}`}>
+        <ReactMarkdown>{text}</ReactMarkdown>
+      </div>
+      {isLong && (
+        <button className="show-more-btn" onClick={() => setExpanded((e) => !e)}>
+          {expanded ? 'Show less ↑' : 'Show more ↓'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ConfidenceBadge({ value, source }) {
   if (value == null) return null;
   const color =
@@ -66,9 +86,7 @@ export default function Stage1({ responses }) {
 
       <div className="tab-content">
         <div className="model-name">{active.model}</div>
-        <div className="response-text markdown-content">
-          <ReactMarkdown>{active.response}</ReactMarkdown>
-        </div>
+        <CollapsibleResponse key={activeTab} text={active.response} />
 
         {hasMetadata && (
           <div className="meta-section">

@@ -41,6 +41,7 @@ class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     scrubbed_content: str | None = None
+    reasoning: str | None = None
 
 
 class ConversationMetadata(BaseModel):
@@ -88,6 +89,13 @@ async def get_conversation(conversation_id: str):
     return conversation
 
 
+@app.delete("/api/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(conversation_id: str):
+    """Delete a conversation and all its messages."""
+    if not storage.delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+
 @app.post("/api/conversations/{conversation_id}/phase0")
 async def scrub_prompt(conversation_id: str, request: ScrubRequest):
     """
@@ -122,7 +130,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     async def event_generator():
         try:
             # Add user message (always store the original, human-readable content)
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(
+                conversation_id,
+                request.content,
+                scrubbed_content=request.scrubbed_content,
+                reasoning=request.reasoning,
+            )
 
             # Start title generation in parallel (don't await yet)
             title_task = None

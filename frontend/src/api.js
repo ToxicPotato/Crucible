@@ -68,17 +68,33 @@ export const api = {
   },
 
   /**
+   * Delete a conversation.
+   * @param {string} conversationId - The conversation ID to delete
+   */
+  async deleteConversation(conversationId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete conversation');
+    }
+  },
+
+  /**
    * Send a message and receive streaming updates.
    * @param {string} conversationId - The conversation ID
    * @param {string} content - The original message content
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @param {string|null} scrubbedContent - Phase 0 scrubbed prompt (if accepted)
+   * @param {string|null} reasoning - Phase 0 reasoning (if scrubbing was accepted)
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, scrubbedContent = null) {
-    const body = scrubbedContent
-      ? { content, scrubbed_content: scrubbedContent }
-      : { content };
+  async sendMessageStream(conversationId, content, onEvent, scrubbedContent = null, reasoning = null) {
+    const body = { content };
+    if (scrubbedContent) {
+      body.scrubbed_content = scrubbedContent;
+      body.reasoning = reasoning;
+    }
 
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,

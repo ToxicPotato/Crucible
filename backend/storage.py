@@ -90,20 +90,50 @@ def list_conversations() -> List[Dict[str, Any]]:
     return conversations
 
 
-def add_user_message(conversation_id: str, content: str):
+def add_user_message(
+    conversation_id: str,
+    content: str,
+    scrubbed_content: str = None,
+    reasoning: str = None,
+):
     """
     Add a user message to a conversation.
 
     Args:
         conversation_id: Conversation identifier
-        content: User message content
+        content: Original user message content (always stored as-is)
+        scrubbed_content: Phase 0 scrubbed version (if user accepted scrubbing)
+        reasoning: Phase 0 reasoning text (why/what was changed)
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({"role": "user", "content": content})
+    msg: Dict[str, Any] = {"role": "user", "content": content}
+    if scrubbed_content:
+        msg["usedScrubbed"] = True
+        msg["scrubbedContent"] = scrubbed_content
+        msg["reasoning"] = reasoning or ""
+
+    conversation["messages"].append(msg)
     save_conversation(conversation)
+
+
+def delete_conversation(conversation_id: str) -> bool:
+    """
+    Delete a conversation from storage.
+
+    Args:
+        conversation_id: Conversation identifier
+
+    Returns:
+        True if deleted, False if not found
+    """
+    path = _conversation_path(conversation_id)
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
 
 
 def add_assistant_message(

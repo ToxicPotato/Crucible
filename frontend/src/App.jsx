@@ -101,7 +101,7 @@ function App() {
   };
 
   // Helper used by handlePhase0Accept to stream stages
-  const runCouncilStream = async (originalContent, scrubbedContent) => {
+  const runCouncilStream = async (originalContent, scrubbedContent, reasoning = null) => {
     // Create a partial assistant message that will be updated progressively
     setCurrentConversation((prev) => ({
       ...prev,
@@ -176,7 +176,8 @@ function App() {
               break;
           }
         },
-        scrubbedContent
+        scrubbedContent,
+        reasoning
       );
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -213,7 +214,21 @@ function App() {
       return { ...prev, messages };
     });
     setPhase0State(PHASE0_IDLE);
-    runCouncilStream(original, scrubbed);
+    runCouncilStream(original, scrubbed, reasoning);
+  };
+
+  const handleDeleteConversation = async (id) => {
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      setErrorMessage('Failed to delete conversation. Please try again.');
+    }
   };
 
   const handlePhase0Decline = () => {
@@ -233,6 +248,7 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
       />
       <ChatInterface
         conversation={currentConversation}

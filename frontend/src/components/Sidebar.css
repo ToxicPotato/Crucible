@@ -72,7 +72,36 @@
   margin-bottom: 4px;
 }
 
+.conversation-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .conversation-meta {
   color: #999;
   font-size: 12px;
+}
+
+.delete-conversation-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #bbb;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.conversation-item:hover .delete-conversation-btn {
+  display: flex;
+}
+
+.delete-conversation-btn:hover {
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.08);
 }
