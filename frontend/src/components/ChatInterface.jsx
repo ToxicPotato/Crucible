@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import CollapsibleText from './CollapsibleText';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage25 from './Stage25';
@@ -107,11 +108,11 @@ export default function ChatInterface({
                 <div className="user-message">
                   <div className="message-label">You</div>
                   <div className="message-content">
-                    <div className="markdown-content">
-                      <ReactMarkdown>
-                        {msg.usedScrubbed ? msg.scrubbedContent : msg.content}
-                      </ReactMarkdown>
-                    </div>
+                    <CollapsibleText
+                      text={msg.usedScrubbed ? msg.scrubbedContent : msg.content}
+                      markdown={true}
+                      threshold={60}
+                    />
                   </div>
                   {msg.usedScrubbed && (
                     <ScrubIndicator original={msg.content} reasoning={msg.reasoning} />

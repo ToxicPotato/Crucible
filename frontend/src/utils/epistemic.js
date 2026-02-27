@@ -1,17 +1,42 @@
 /**
- * Calculates the peer alignment level across aggregate rankings.
- * spread = max_avg_rank - min_avg_rank
- * ≤ 0.3 → "Unanimous", ≤ 0.8 → "Majority", else → "Split", null/empty → "Unknown"
+ * Measures content agreement across council models.
+ * Primary signal: overlap ratio of factual_claims across models.
+ * Fallback (no claims): spread of confidence scores.
  *
- * @param {Array<{model: string, average_rank: number}>} aggregateRankings
+ * @param {Array<{factual_claims: string[], confidence: number|null}>} stage1
  * @returns {"Unanimous"|"Majority"|"Split"|"Unknown"}
  */
-export function calcPeerAlignment(aggregateRankings) {
-  if (!aggregateRankings || aggregateRankings.length === 0) return 'Unknown';
-  const ranks = aggregateRankings.map((a) => a.average_rank);
-  const spread = Math.max(...ranks) - Math.min(...ranks);
-  if (spread <= 0.3) return 'Unanimous';
-  if (spread <= 0.8) return 'Majority';
+export function calcPeerAlignment(stage1) {
+  if (!stage1 || stage1.length < 2) return 'Unknown';
+
+  function normalize(str) {
+    return str.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  }
+
+  const allClaims = stage1.map((r) =>
+    Array.isArray(r.factual_claims) ? r.factual_claims.map(normalize) : []
+  );
+
+  const flat = allClaims.flat();
+  const unique = [...new Set(flat)];
+
+  if (unique.length > 0) {
+    // Count claims shared by ≥ 2 models
+    const overlapping = unique.filter(
+      (claim) => allClaims.filter((list) => list.includes(claim)).length >= 2
+    );
+    const overlapRatio = overlapping.length / unique.length;
+    if (overlapRatio >= 0.5) return 'Unanimous';
+    if (overlapRatio >= 0.2) return 'Majority';
+    return 'Split';
+  }
+
+  // Fallback: confidence convergence when no claims present
+  const confidences = stage1.map((r) => r.confidence).filter((v) => v != null);
+  if (confidences.length === 0) return 'Unknown';
+  const spread = Math.max(...confidences) - Math.min(...confidences);
+  if (spread <= 15) return 'Unanimous';
+  if (spread <= 30) return 'Majority';
   return 'Split';
 }
 

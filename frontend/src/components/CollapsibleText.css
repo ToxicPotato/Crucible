@@ -1,0 +1,47 @@
+.collapsible-text {
+  /* container — no extra margin so callers control spacing */
+}
+
+.collapsible-body {
+  position: relative;
+  color: #333;
+  line-height: 1.6;
+}
+
+.collapsible-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Fade overlay — only rendered when collapsed (sibling positioned inside .collapsible-body) */
+.collapsible-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.9));
+  pointer-events: none;
+}
+
+/* Pill-shaped show more / show less button */
+.collapsible-btn {
+  display: block;
+  margin: 10px auto 0;
+  padding: 5px 14px;
+  background: #f5f5f5;
+  border: 1px solid #d0d0d0;
+  border-radius: 20px;
+  color: #555;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  line-height: 1.4;
+}
+
+.collapsible-btn:hover {
+  background: #eaeaea;
+}

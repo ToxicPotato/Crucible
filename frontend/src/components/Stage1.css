@@ -20,34 +20,6 @@
   font-family: monospace;
 }
 
-.response-text {
-  color: #333;
-  line-height: 1.6;
-}
-
-.response-clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.show-more-btn {
-  display: inline-block;
-  margin-top: 8px;
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 0;
-}
-
-.show-more-btn:hover {
-  text-decoration: underline;
-}
-
 /* ── Metadata section ─────────────────────────────── */
 
 .meta-section {

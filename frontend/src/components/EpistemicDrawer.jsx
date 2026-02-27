@@ -23,7 +23,7 @@ const RELIABILITY_CLASS = {
 };
 
 export default function EpistemicDrawer({ open, onClose, stage25, stage1, aggregateRankings }) {
-  const peerAlignment = calcPeerAlignment(aggregateRankings);
+  const peerAlignment = calcPeerAlignment(stage1);
   const verdict = calcVerdict(stage25, stage1);
   const confRange = calcConfidenceRange(stage1);
   const grouped = groupClaimsByVerdict(stage25);

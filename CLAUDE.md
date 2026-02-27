@@ -72,9 +72,9 @@ Each agent has its own instruction file in `.claude/agents/`. Agents implement a
 | frontend-agent | `.claude/agents/frontend-agent.md` | `frontend/src/` only |
 | infra-agent | `.claude/agents/infra-agent.md` | docker / nginx / env only |
 | review-agent | `.claude/agents/review-agent.md` | Read-only — cross-domain verification |
-| workflow-agent | `.claude/agents/workflow-agent.md` | Proposes improvements to agent files |
+| workflow-agent | `.claude/agents/workflow-agent.md` | Proposes improvements to agent files and CLAUDE.md |
 
-**Top-level Claude is orchestrator only.** Never write implementation code directly.
+**Top-level Claude is orchestrator only.** Never write implementation code directly. Never read implementation files to investigate a bug or verify behavior — that is agent work. Orchestration means task routing: decompose the request, identify the agent, compose the prompt, and wait for the signal.
 
 **When no role is specified**, Claude is top-level orchestrator by default and must:
 1. Identify whether the task crosses domain boundaries
@@ -83,20 +83,23 @@ Each agent has its own instruction file in `.claude/agents/`. Agents implement a
 
 **Permission gate fallback:** If an agent has fully specified its changes but write tools are blocked after one resumption attempt, top-level Claude may apply the exact agent-specified diff. Apply only what the agent stated — no additions, no reasoning.
 
+**Unowned task fallback:** If a task has no clear single-agent owner and is not a design decision, decompose it into subtasks, assign each to the appropriate agent, and spawn them. If decomposition is not possible, treat it as a design decision and spawn council-prompt-agent.
+
 ## Session Pipeline
 
 After every non-trivial implementation:
 
-1. **Implement** — spawn backend-agent and/or frontend-agent in parallel
-2. **Review** — if any agent returns `uncertain` or `blocked`, spawn review-agent
-3. **Workflow** — if review-agent found issues or the session had friction, spawn workflow-agent
+1. **Implement** — spawn backend-agent and/or frontend-agent in parallel. Exception: if the task changes a backend API contract that the frontend consumes (new SSE event, new JSON key, changed field name), run backend-agent first, wait for SIGNAL: clean, then spawn frontend-agent with the confirmed schema.
+2. **Review** — if any agent returns `uncertain` or `blocked`, OR if the task touched both frontend and backend in the same session, spawn review-agent
+3. **Workflow** — always spawn workflow-agent after every non-trivial session
 
-Fast sessions where all agents return `clean` skip steps 2 and 3.
+Fast sessions where all agents return `clean` skip step 2.
 
 ## Post-Task Review
 
 When the developer asks for a post-task review, spawn `workflow-agent`.
 Do not perform the review directly as top-level Claude.
+The prompt to workflow-agent must contain only: what happened in the session, what friction or violations occurred, and a request to identify gaps in agent or CLAUDE.md files. Do not include code-reading or bug-verification tasks in this prompt — those belong to review-agent, spawned separately if needed.
 
 ## Key Cross-Cutting Invariants
 

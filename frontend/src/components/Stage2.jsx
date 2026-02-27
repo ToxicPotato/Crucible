@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
 import { getModelShortName } from '../utils';
+import CollapsibleText from './CollapsibleText';
 import './Stage2.css';
 
 function deAnonymizeText(text, labelToModel) {
@@ -52,11 +52,11 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
         <div className="ranking-model">
           {rankings[activeTab].model}
         </div>
-        <div className="ranking-content markdown-content">
-          <ReactMarkdown>
-            {deAnonymizeText(rankings[activeTab].ranking, labelToModel)}
-          </ReactMarkdown>
-        </div>
+        <CollapsibleText
+          text={deAnonymizeText(rankings[activeTab].ranking, labelToModel)}
+          markdown={true}
+          threshold={80}
+        />
 
         {rankings[activeTab].parsed_ranking &&
          rankings[activeTab].parsed_ranking.length > 0 && (

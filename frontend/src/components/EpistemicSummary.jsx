@@ -18,10 +18,10 @@ const RELIABILITY_CLASS = {
   Unknown:   'reliability-badge--unknown',
 };
 
-export default function EpistemicSummary({ stage1, stage25, aggregateRankings }) {
+export default function EpistemicSummary({ stage1, stage25 }) {
   const [open, setOpen] = useState(false);
 
-  const peerAlignment = calcPeerAlignment(aggregateRankings);
+  const peerAlignment = calcPeerAlignment(stage1);
   const verdict = calcVerdict(stage25, stage1);
   const confRange = calcConfidenceRange(stage1);
   const peerAlignmentCls = CONSENSUS_CLASS[peerAlignment] ?? CONSENSUS_CLASS.Unknown;
